@@ -1,0 +1,19 @@
+# Файлы окружения Poetry и Python
+.venv/
+venv/
+*.pyc
+__pycache__/
+.env
+
+# Временные файлы VS Code
+.vscode/
+
+# Папка для временных аудио
+temp_audio/
+
+# Логи и базы данных
+*.log
+*.sqlite3
+
+# Системные файлы macOS
+.DS_Store

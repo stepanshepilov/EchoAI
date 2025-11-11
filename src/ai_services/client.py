@@ -10,10 +10,10 @@ def get_openai_client():
 
     return client
 
-if __name__ == "__main__":
+async def main():
     client = get_openai_client()
 
-    response = client.chat.completions.create(
+    response = await client.chat.completions.create(
         model=settings.model_name,
         messages=[
             {
@@ -24,3 +24,6 @@ if __name__ == "__main__":
         temperature=1
     )
     print(response)
+
+if __name__ == "__main__":
+    asyncio.run(main())

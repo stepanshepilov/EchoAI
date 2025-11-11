@@ -45,22 +45,7 @@ async def handle_voice(message: Message):
         await message.answer(result["text"])
     else:
         await message.answer("Не удалось распознать речь 😔")
-    
 
-# Аудиофайлы (audio) — может быть mp3/m4a/ogg и т.д.
-# @dp.message(F.audio)
-# async def handle_audio(message: Message):
-#     # пробуем вытащить расширение из исходного имени иначе mp3
-#     ext = "mp3"
-#     if message.audio.file_name and "." in message.audio.file_name:
-#         ext = message.audio.file_name.rsplit(".", 1)[-1]
-
-#     file_name = f"{uuid.uuid4()}.{ext}"
-#     dst_path = TEMP_AUDIO_DIR / file_name
-
-#     await bot.download(message.audio, destination=dst_path)
-
-#     logger.info(f"Аудиофайл сохранён: {dst_path.as_posix()}")
 
 # ==== Запуск ====
 async def main():

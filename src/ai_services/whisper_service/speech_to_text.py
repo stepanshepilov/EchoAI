@@ -2,9 +2,14 @@ import asyncio
 import logging
 import whisper
 
+# УБРАТЬ ЭТОТ ЕБАННЫЙ КОСТЫЛЬ 
+import os
+os.environ["PATH"] += os.pathsep + r"C:\Users\kates\Downloads\ffmpeg-8.0-essentials_build\bin"
+
+
 logger = logging.getLogger(__name__)
 
-MODEL_NAME = "small"
+MODEL_NAME = "base"
 logger.info(f"Загружаю модель Whisper: {MODEL_NAME}...")
 
 try:

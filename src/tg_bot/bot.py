@@ -16,7 +16,8 @@ logger = logging.getLogger(__name__)
 # Перед запуском установи переменную окружения BOT_TOKEN или подставь строкой:
 BOT_TOKEN = os.getenv("BOT_TOKEN", "8445782769:AAFJjwgIPH4aQmmFEMNz58g8z0NO9MKDkj0")
 
-TEMP_AUDIO_DIR = Path("temp_audio")
+BASE_DIR = Path(__file__).resolve().parent
+TEMP_AUDIO_DIR = BASE_DIR / "temp_audio"
 TEMP_AUDIO_DIR.mkdir(parents=True, exist_ok=True)
 
 # ==== Инициализация ====

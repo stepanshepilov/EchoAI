@@ -1,22 +1,13 @@
-from openai import OpenAI
+import openai
+import asyncio
 from ..settings import settings
 
-# Здесь на месте увидим, где будет LLM, там и напишем актуальный файл
-
-def get_client():
-    client = ChatOpenAI(
-        api_key=settings.api_key,
-        temperature=0,
-        base_url=settings.base_url,
-        model_name=settings.model_name
-    )
-    return client
-
 def get_openai_client():
-    client = OpenAI(
-        api_key=settings.api_key,
-        base_url=settings.base_url
+    client = openai.AsyncOpenAI(
+        api_key=settings.OPENAI_API_KEY,
+        base_url=settings.DEEPSEEK_API_BASE
     )
+
     return client
 
 if __name__ == "__main__":

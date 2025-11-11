@@ -6,8 +6,12 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "Echo AI"
     API_V1_STR: str = "/api/v1"
     
-    # Настройки для сервисов
     OPENAI_API_KEY: str
+    
     WHISPER_MODEL: str = "small"
+    
+    DEEPSEEK_API_BASE: str
+
+    model_name: str = "deepseek-chat"
 
 settings = Settings()

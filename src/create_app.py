@@ -6,7 +6,7 @@ from .core.log import setup_logging
 from .settings import settings
 from .db.session import engine
 from .db.models import Base
-from .api.v1.views import audio_router
+from .api.v1.views import router
 
 setup_logging()
 logger = logging.getLogger(__name__)
@@ -33,7 +33,7 @@ def create_app() -> FastAPI:
     )
 
     api_router = APIRouter(prefix=settings.API_V1_STR)
-    api_router.include_router(audio_router, tags=["Transcription"])
+    api_router.include_router(router, tags=["Transcription"])
 
     app.include_router(api_router)
     

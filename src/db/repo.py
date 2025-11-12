@@ -32,11 +32,8 @@ class BaseRepository(ABC):
 
 class InMemoryRepository(BaseRepository):
     def __init__(self):
-        # 'conversations': { "session_id_1": [{"role": "user", "content": "..."}, ...], ... }
         self._conversations: Dict[str, List[Dict[str, str]]] = {}
-        # 'analyses': { "session_id_1": {"sentiment": 0.5, "topics": [...]}, ... }
         self._analyses: Dict[str, Dict[str, Any]] = {}
-        # 'sessions': { "session_id_1": {"user_id": 101}, ... }
         self._sessions: Dict[str, Dict[str, Any]] = {}
 
     def start_new_session(self, user_id: int) -> str:

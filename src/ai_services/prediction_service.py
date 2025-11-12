@@ -7,7 +7,7 @@ from ..settings import settings
 
 logger = logging.getLogger(__name__)
 
-MODEL_FILE = "models/catboost_burnout_v1.cbm"
+MODEL_FILE = "models/catboost.cbm"
 
 class PredictionService:
     model: CatBoostClassifier = None

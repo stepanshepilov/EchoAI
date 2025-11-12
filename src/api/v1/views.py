@@ -1,18 +1,15 @@
 import logging
 from fastapi import APIRouter, HTTPException, Query
 from .models import TeamPulseResponse, ExplanationResponse
-# from ..services.prediction_service import prediction_service
+from ...ai_services.prediction_service import prediction_service
+import pandas as pd
 # from ..services.feature_service import feature_service
 # from db.repository import db_repository
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-@router.get(
-    "/team-pulse",
-    response_model=TeamPulseResponse,
-    summary="Получить 'пульс' команды"
-)
+@router.get("/team-pulse", response_model=TeamPulseResponse, summary="Получить 'пульс' команды")
 async def get_team_pulse(team_id: str = Query(..., description="ID команды для анализа")):
     try:
         # employees = await db_repository.get_employees_by_team(team_id)
@@ -35,11 +32,7 @@ async def get_team_pulse(team_id: str = Query(..., description="ID команд�
         raise HTTPException(status_code=500, detail="Внутренняя ошибка сервера.")
 
 
-@router.get(
-    "/employees/{employee_token}/explain",
-    response_model=ExplanationResponse,
-    summary="Объяснить предсказание для сотрудника"
-)
+@router.get("/employees/{employee_token}/explain", response_model=ExplanationResponse, summary="Объяснить предсказание для сотрудника")
 async def get_prediction_explanation(employee_token: str):
     try:
         # employee = await db_repository.get_employee_by_token(employee_token)
@@ -61,3 +54,15 @@ async def get_prediction_explanation(employee_token: str):
     except Exception as e:
         logger.error(f"Ошибка при объяснении предсказания для токена {employee_token}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Внутренняя ошибка сервера.")
+
+@router.get("/employees/{employee_token}/explain", response_model=ExplanationResponse)
+async def get_prediction_explanation(employee_token: str):
+    # features_df = await feature_service.build_features_for_employee(employee_token)
+    mock_features = pd.DataFrame([{"age": 35, "days_since_last_vacation": 280}])
+
+    explanation_data = await prediction_service.explain(mock_features)
+
+    if "error" in explanation_data:
+        raise HTTPException(status_code=503, detail="Сервис предсказаний недоступен.")
+        
+    return ExplanationResponse(token=employee_token, **explanation_data)

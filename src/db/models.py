@@ -6,20 +6,24 @@ Base = declarative_base()
 
 class Employee(Base):
     __tablename__ = 'employees'
-    id = Column(Integer, primary_key=True)
-    # здесь будут поля из данных организаторов
-    
-    dialogue_sessions = relationship("DialogueSession", back_populates="employee")
+    id = Column(Integer, primary_key=True, index=True)
+    telegram_id = Column(Integer, unique=True, index=True)
+    # Здесь будут другие поля, которые мы получим от организаторов
+
+    dialogue_sessions = relationship("DialogueSession", back_populates="employee", cascade="all, delete-orphan")
+
+    def __repr__(self):
+        return f"<Employee(id={self.id}, telegram_id={self.telegram_id})>"
 
 class DialogueSession(Base):
     __tablename__ = 'dialogue_sessions'
-    id = Column(String, primary_key=True)
+    id = Column(String, primary_key=True, index=True)
     employee_id = Column(Integer, ForeignKey('employees.id'))
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     
     employee = relationship("Employee", back_populates="dialogue_sessions")
-    messages = relationship("ChatMessage", back_populates="session")
-    analysis = relationship("DialogueAnalysis", back_populates="session", uselist=False)
+    messages = relationship("ChatMessage", back_populates="session", cascade="all, delete-orphan")
+    analysis = relationship("DialogueAnalysis", back_populates="session", uselist=False, cascade="all, delete-orphan")
 
 class ChatMessage(Base):
     __tablename__ = 'chat_messages'

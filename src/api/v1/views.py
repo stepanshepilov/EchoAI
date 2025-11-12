@@ -8,10 +8,10 @@ from .transcription import transcription_service
 from .models import TranscriptionResponse
 
 logger = logging.getLogger(__name__)
-bot_router = APIRouter()
+audio_router = APIRouter()
 TEMP_AUDIO_DIR = "temp_audio"
 
-@bot_router.post(
+@audio_router.post(
     "/transcribe",
     response_model=TranscriptionResponse,
     summary="Транскрибация аудиофайла"

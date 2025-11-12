@@ -1,14 +1,30 @@
 import os
 import logging
 from fastapi import FastAPI, APIRouter
+from contextlib import asynccontextmanager
 from .core.log import setup_logging
 from .settings import settings
+from .db.session import engine
+from .db.models import Base
 from .api.v1.views import audio_router
 
 setup_logging()
 logger = logging.getLogger(__name__)
 
 os.makedirs("temp_audio", exist_ok=True)
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    logger.info("Поднимаю Backend, инициализирую БД")
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    
+    logger.info("База данных успешно инициализирована.")
+    
+    yield
+    
+    logger.info("Приложение останавливается...")
+    await engine.dispose()
 
 def create_app() -> FastAPI:
     app = FastAPI(

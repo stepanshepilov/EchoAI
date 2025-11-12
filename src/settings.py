@@ -14,4 +14,6 @@ class Settings(BaseSettings):
 
     model_name: str = "deepseek-chat"
 
+    DATABASE_URL: str = "sqlite+aiosqlite:///./database.db"
+
 settings = Settings()

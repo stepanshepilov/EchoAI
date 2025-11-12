@@ -9,8 +9,6 @@ from aiogram.filters import CommandStart, StateFilter
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram.dispatcher.middlewares.base import BaseMiddleware
-from typing import Callable, Dict, Any, Awaitable
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -85,7 +83,7 @@ class UserStates(StatesGroup):
 # ==== Приветствия ====
 async def show_authenticated_menu(message: Message, user_name: str):
     await message.answer(
-        f"Добро пожаловать, {user_name}!\n\nВы можете написать как прошёл ваш день или записать голосовое сообщение.",
+        f"Добро пожаловать, {user_name}!\n\nПривет! Как прошла твоя рабочая неделя? Что было самым запоминающимся?",
     )
 
 async def ask_about_cdek_id(message: Message):
@@ -129,21 +127,21 @@ async def process_cdek_id_handler(message: Message, state: FSMContext):
         await message.answer("К сожалению, я не нашел такой CDEK ID. Попробуйте еще раз или нажмите /start, чтобы начать заново.")
 
 # ==== Функционал для авторизованных пользователей ====
-# @dp.message(UserStates.authenticated, CommandStart())
-# async def logout_handler(message: Message, state: FSMContext):
-#     await state.clear()
-#     await message.answer("Вы успешно вышли из системы. Чтобы начать снова, отправьте любое сообщение.", reply_markup=ReplyKeyboardRemove())
+@dp.message(UserStates.authenticated, CommandStart())
+async def logout_handler(message: Message, state: FSMContext):
+    await state.clear()
+    logger.info(f'Пользователь {message.from_user.id} вышел из системы')
+    await message.answer("Вы успешно вышли из системы. Чтобы начать снова, отправьте любое сообщение.", reply_markup=ReplyKeyboardRemove())
 
 
-@dp.message(UserStates.authenticated, F.text)
-async def handle_text_message(message: Message, state: FSMContext):
+async def get_ai_answer(message_text, state: FSMContext):
     # Загружаем текущую историю разговора из FSM
     user_data = await state.get_data()
     conversation_history = user_data.get(FSM_CONTEXT_HISTORY_KEY, [])
     
-    # Добавляем новое сообщение пользователя в историю
+    # Загружаем текущую историю разговора из F):
     conversation_history.append(
-        {"role": "user", "content": message.text}
+        {"role": "user", "content": message_text}
     )
     try:
         ai_response_text = await AI.get_response(
@@ -162,8 +160,12 @@ async def handle_text_message(message: Message, state: FSMContext):
     await state.update_data(
         **{FSM_CONTEXT_HISTORY_KEY: conversation_history}
     )
-    
-    # Отправляем ответ пользователю
+    return ai_response_text
+
+@dp.message(UserStates.authenticated, F.text)
+async def handle_text_message(message: Message, state: FSMContext):
+
+    ai_response_text = await get_ai_answer(message.text, state)
     await message.answer(ai_response_text)
 
 
@@ -180,26 +182,27 @@ async def handle_voice(message: Message, state: FSMContext):
     result = await transcribe_audio(str(dst_path))
 
     if "text" in result:
-        await message.answer(result["text"])
+        ai_response_text = await get_ai_answer(result["text"], state)
+        await message.answer(ai_response_text)
     else:
         await message.answer("Не удалось распознать речь 😔")
 
 
 # ==== Запуск ====
 async def set_main_menu(bot: Bot):
-    main_menu_commands = [BotCommand(command='/start', description='Перезапустить бота')]
+    main_menu_commands = [BotCommand(command='/start', description='Перезапустить бота / Главное меню 🔥')]
     await bot.set_my_commands(main_menu_commands)
 
 
-@dp.message(CommandStart(), UserStates.authenticated)
-async def start_handler(message: Message, state: FSMContext):
-    await state.clear()
-    user = await find_user_in_local_db(message.from_user.id)
-    if user:
-        await state.set_state(UserStates.authenticated)
-        await show_authenticated_menu(message, user["name"])
-    else:
-        await ask_about_cdek_id(message)
+# @dp.message(CommandStart(), UserStates.authenticated)
+# async def start_handler(message: Message, state: FSMContext):
+#     await state.clear()
+#     user = await find_user_in_local_db(message.from_user.id)
+#     if user:
+#         await state.set_state(UserStates.authenticated)
+#         await show_authenticated_menu(message, user["name"])
+#     else:
+#         await ask_about_cdek_id(message)
 
 
 # Ловит /start и ЛЮБОЕ другое сообщение от пользователя без состояния

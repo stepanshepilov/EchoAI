@@ -20,6 +20,9 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(level
 logger = logging.getLogger(__name__)
 
 from src.ai_services.whisper_service.speech_to_text import transcribe_audio
+from src.ai_services.base import ChatLM
+AI = ChatLM()
+FSM_CONTEXT_HISTORY_KEY = 'conversation_history'
 
 # ==== ЗАГЛУШКИ ДЛЯ РАБОТЫ С БАЗАМИ ДАННЫХ ====
 
@@ -134,10 +137,37 @@ async def process_cdek_id_handler(message: Message, state: FSMContext):
 
 @dp.message(UserStates.authenticated, F.text)
 async def handle_text_message(message: Message, state: FSMContext):
-    await message.answer(message.text)
+    # Загружаем текущую историю разговора из FSM
+    user_data = await state.get_data()
+    conversation_history = user_data.get(FSM_CONTEXT_HISTORY_KEY, [])
+    
+    # Добавляем новое сообщение пользователя в историю
+    conversation_history.append(
+        {"role": "user", "content": message.text}
+    )
+    try:
+        ai_response_text = await AI.get_response(
+            conversation_history=conversation_history
+        )
+    except Exception as e:
+        logger.error(f"Ошибка при запросе к AI: {e}")
+        ai_response_text = "Произошла ошибка при обработке запроса. Попробуйте позже."
+
+    # Добавляем ответ AI в историю
+    conversation_history.append(
+        {"role": "assistant", "content": ai_response_text}
+    )
+    
+    # Сохраняем обновленную историю обратно в FSM
+    await state.update_data(
+        **{FSM_CONTEXT_HISTORY_KEY: conversation_history}
+    )
+    
+    # Отправляем ответ пользователю
+    await message.answer(ai_response_text)
 
 
-# Голосовые сообщения (voice) - Telegram присылает в OGG/Opus
+# Голосовые сообщения (voice)
 @dp.message(UserStates.authenticated, F.voice)
 async def handle_voice(message: Message, state: FSMContext):
     # генерируем имя файла .ogg
@@ -161,14 +191,23 @@ async def set_main_menu(bot: Bot):
     await bot.set_my_commands(main_menu_commands)
 
 
-# --- ГЛАВНЫЙ ОБРАБОТЧИК-"СТОРОЖ" ---
+@dp.message(CommandStart(), UserStates.authenticated)
+async def start_handler(message: Message, state: FSMContext):
+    await state.clear()
+    user = await find_user_in_local_db(message.from_user.id)
+    if user:
+        await state.set_state(UserStates.authenticated)
+        await show_authenticated_menu(message, user["name"])
+    else:
+        await ask_about_cdek_id(message)
+
+
 # Ловит /start и ЛЮБОЕ другое сообщение от пользователя без состояния
-# Он должен быть зарегистрирован ПОСЛЕ обработчиков для authenticated
 @dp.message(StateFilter(None))
 async def entry_point_handler(message: Message, state: FSMContext):
     # Сначала проверяем, не является ли это командой /start, которая требует особого поведения
     if message.text == '/start':
-        await state.clear() # Полный сброс сессии
+        await state.clear() # Полный сброс сессии и истории
     
     user = await find_user_in_local_db(message.from_user.id)
     

@@ -40,8 +40,6 @@ class DialogueAnalysis(Base):
     id = Column(Integer, primary_key=True)
     session_id = Column(String, ForeignKey('dialogue_sessions.id'), unique=True)
     sentiment = Column(Float)
-    topics = Column(JSON)
     is_burnout_risk_detected = Column(Boolean)
-    summary = Column(String)
     
     session = relationship("DialogueSession", back_populates="analysis")

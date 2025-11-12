@@ -1,7 +1,6 @@
 import logging
 from typing import Dict, Any
 from pydantic import BaseModel, Field, ValidationError
-from ..client import get_openai_client 
 from ..prompts.nlp_analyzer import SYSTEM_PROMPT_ANALYZER
 from ..base import BaseLM
 

@@ -126,9 +126,9 @@ async def find_user_by_cdek_id(cdek_id: str):
     """Ищет пользователя во внешней БД (СДЭК). Возвращает dict или None."""
     logger.info(f"[DB Stub] Поиск CDEK ID {cdek_id} во внешней БД...")
     # Имитация:
-    if cdek_id == "123":
-        return True
-    return False
+    if cdek_id == 123:
+        return {}
+    return None
 
 
 
@@ -160,6 +160,15 @@ async def ask_about_cdek_id(message: Message):
     )
 
 
+# \start
+@dp.message(~StateFilter(None), CommandStart())
+async def logout_handler(message: Message, state: FSMContext):
+    await state.clear()
+    logger.info(f'Пользователь {message.from_user.id} вышел из системы')
+    await message.answer("Вы успешно вышли из сесси.", reply_markup=ReplyKeyboardRemove())
+    await entry_point_handler(message, state)
+
+
 # ==== Обработчики (Callback) ====
 @dp.callback_query(F.data == "cdek_no")
 async def cdek_no_callback_handler(callback: CallbackQuery, state: FSMContext):
@@ -183,25 +192,19 @@ async def cdek_yes_callback_handler(callback: CallbackQuery, state: FSMContext):
 async def process_cdek_id_handler(message: Message, state: FSMContext):
     cdek_id_input = message.text
 
-    if not find_user_by_cdek_id(cdek_id=cdek_id_input):
+    if await find_user_by_cdek_id(cdek_id=cdek_id_input):
+        await create_db_user(message.from_user.id, message.from_user.full_name, state, cdek_id_input)
+        await state.set_state(UserStates.authenticated)
+        await message.answer("Отлично, я нашел вас!")
+        await show_authenticated_menu(message, message.from_user.full_name)
+
+    else: 
         await message.answer("Такого ID не сущетвует. Попробуйте ещё раз")
-        return 
-    await create_db_user(message.from_user.id, message.from_user.full_name, state, cdek_id_input)
-    await state.set_state(UserStates.authenticated)
-    await message.answer("Отлично, я нашел вас!")
-    await show_authenticated_menu(message, message.from_user.full_name)
+    # return 
 
 
 
 # ==== Функционал для авторизованных пользователей ====
-@dp.message(UserStates.authenticated, CommandStart())
-async def logout_handler(message: Message, state: FSMContext):
-    await state.clear()
-    logger.info(f'Пользователь {message.from_user.id} вышел из системы')
-    await message.answer("Вы успешно вышли из системы. Чтобы начать снова, отправьте любое сообщение.", reply_markup=ReplyKeyboardRemove())
-    # await get_db_user(telegram_id=message.from_user.id, full_name=message.from_user.full_name, state=state)
-
-
 async def get_ai_answer(message_text, state: FSMContext):
     user_data = await state.get_data()
     session_id = user_data.get(FSM_SESSION_ID_KEY)

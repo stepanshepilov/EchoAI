@@ -261,6 +261,7 @@ async def handle_voice(message: Message, state: FSMContext):
 # ==== Запуск ====
 async def set_main_menu(bot: Bot):
     main_menu_commands = [BotCommand(command='/start', description='Перезапустить бота / Главное меню 🔥')]
+    # проброс по websoscket строки {'user_id': id, 'event': 'session_started'}
     await bot.set_my_commands(main_menu_commands)
 
 

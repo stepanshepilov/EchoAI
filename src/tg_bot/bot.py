@@ -12,6 +12,7 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.dispatcher.middlewares.base import BaseMiddleware
+from aiogram.enums import ChatAction
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -40,7 +41,7 @@ TEMP_AUDIO_DIR = BASE_DIR / "temp_audio"
 TEMP_AUDIO_DIR.mkdir(parents=True, exist_ok=True)
 
 SESSION_TIMEOUT_TASKS: Dict[int, asyncio.Task] = {}
-SESSION_TIMEOUT = 100
+SESSION_TIMEOUT = 500
 
 # ==== Инициализация ====
 bot = Bot(token=BOT_TOKEN)
@@ -126,14 +127,8 @@ async def find_user_by_cdek_id(cdek_id: str):
     logger.info(f"[DB Stub] Поиск CDEK ID {cdek_id} во внешней БД...")
     # Имитация:
     if cdek_id == "123":
-        return {"name": "Стёпа", "phone": "11117", "city": "Томск"}
-    return None
-
-async def create_local_user_from_cdek(user_id: int, cdek_id: str, cdek_data: dict):
-    """Создает пользователя в нашей БД на основе данных из СДЭК."""
-    logger.info(f"[DB Stub] Создание пользователя {user_id} из данных СДЭК {cdek_id}")
-    # Заглушка
-    return {"user_id": user_id, "name": cdek_data["name"], "cdek_id": cdek_id}
+        return True
+    return False
 
 
 
@@ -188,6 +183,9 @@ async def cdek_yes_callback_handler(callback: CallbackQuery, state: FSMContext):
 async def process_cdek_id_handler(message: Message, state: FSMContext):
     cdek_id_input = message.text
 
+    if not find_user_by_cdek_id(cdek_id=cdek_id_input):
+        await message.answer("Такого ID не сущетвует. Попробуйте ещё раз")
+        return 
     await create_db_user(message.from_user.id, message.from_user.full_name, state, cdek_id_input)
     await state.set_state(UserStates.authenticated)
     await message.answer("Отлично, я нашел вас!")
@@ -234,6 +232,7 @@ async def get_ai_answer(message_text, state: FSMContext):
 @dp.message(UserStates.authenticated, F.text)
 async def handle_text_message(message: Message, state: FSMContext):
 
+    await bot.send_chat_action(chat_id=message.chat.id, action=ChatAction.TYPING)
     ai_response_text = await get_ai_answer(message.text, state)
     await message.answer(ai_response_text)
 
@@ -251,8 +250,9 @@ async def handle_voice(message: Message, state: FSMContext):
     result = await transcribe_audio(str(dst_path))
 
     if "text" in result:
+        await bot.send_chat_action(chat_id=message.chat.id, action=ChatAction.TYPING)
         ai_response_text = await get_ai_answer(result["text"], state)
-        await message.answer(ai_response_text)
+        await message.answer(ai_response_text)  
     else:
         await message.answer("Не удалось распознать речь 😔")
 

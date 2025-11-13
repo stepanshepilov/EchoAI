@@ -4,7 +4,7 @@ from abc import ABC, abstractmethod
 from typing import List, Dict, Any, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from sqlalchemy import update
+from sqlalchemy import update, desc
 from src.db.models import Employee, DialogueSession, ChatMessage, DialogueAnalysis
 
 logger = logging.getLogger(__name__)
@@ -37,6 +37,12 @@ class BaseRepository(ABC):
     @abstractmethod
     async def save_analysis(self, session_id: str, analysis_data: Dict[str, Any]) -> DialogueAnalysis:
         pass
+
+    @abstractmethod 
+    async def get_last_session_for_employee(self, employee_id: int) -> Optional[DialogueSession]:
+        pass
+
+
 
 class InMemoryRepository(BaseRepository):
     def __init__(self):
@@ -151,3 +157,17 @@ class SQLiteRepository(BaseRepository):
         await self.session.commit()
         await self.session.refresh(analysis_obj)
         return analysis_obj
+    
+
+    async def get_last_session_for_employee(self, employee_id: int) -> Optional[DialogueSession]:
+        """
+        Находит последнюю сессию для сотрудника, сортируя по дате создания.
+        """
+        logger.info(f"Поиск последней сессии для сотрудника с ID: {employee_id}")
+        result = await self.session.execute(
+            select(DialogueSession)
+            .where(DialogueSession.employee_id == employee_id)
+            .order_by(desc(DialogueSession.created_at)) # Сортируем по убыванию даты
+            .limit(1) # Берем только первую (самую свежую) запись
+        )
+        return result.scalar_one_or_none()

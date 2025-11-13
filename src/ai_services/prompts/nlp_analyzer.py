@@ -11,7 +11,7 @@ You MUST respond ONLY in JSON format that matches the provided schema.
     - +0.5: Moderate positivity, satisfaction ("managed it", "interesting task").
     - +1.0: Strong excitement, energy ("best week ever", "feeling inspired").
 
-2.  **is_burnout_risk**: Set to `true` if the message contains AT LEAST ONE of the following indicators, otherwise `false`:
+2.  **is_burnout_risk_detected **: Set to `true` if the message contains AT LEAST ONE of the following indicators, otherwise `false`:
     - Direct complaints about fatigue, stress, or loss of meaning.
     - Mentions of loss of control, cynicism, or detachment.
     - Reports of physical ailments related to work (headaches, insomnia).

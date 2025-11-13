@@ -13,7 +13,7 @@ class SentimentAnalysisResponse(BaseModel):
         ge=-1.0, 
         le=1.0
     )
-    is_burnout_risk: bool = Field(
+    is_burnout_risk_detected : bool = Field(
         ...,
         description="Флаг, указывающий на прямые или косвенные признаки выгорания в тексте (True/False)."
     )

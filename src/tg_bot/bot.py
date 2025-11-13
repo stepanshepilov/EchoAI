@@ -48,27 +48,35 @@ dp = Dispatcher(storage=MemoryStorage())
 
 
 # ==== ДЛЯ РАБОТЫ С БАЗАМИ ДАННЫХ ====
+async def begin_new_session(employee_id: int):
+    async with AsyncSessionLocal() as session_2:
+        repo = SQLiteRepository(session_2)
+        new_db_session = await repo.start_new_session(employee_id)
+        return new_db_session
 
-async def get_db_user(telegram_id: int, full_name: str):
+async def get_db_user(telegram_id: int, full_name: str, state: FSMContext):
     async with AsyncSessionLocal() as session:
         repo = SQLiteRepository(session)
         
         employee_object = await repo.get_employee(
-            telegram_id=telegram_id,
-            name=full_name
+            telegram_id=telegram_id
         )
         
         if employee_object:
+            new_db_session = await begin_new_session(employee_object.id)
+            await state.update_data({FSM_SESSION_ID_KEY: new_db_session.id})
+            logger.info(f"Для пользователя {telegram_id} стартовала сессия {new_db_session.id}")
+
             # Возвращаем словарь для совместимости
             return {
                 "user_id": employee_object.telegram_id,
                 # Если в модели есть имя - берем его, иначе из Telegram
-                "name": getattr(employee_object, 'name', full_name),
+                "name": employee_object.name or full_name,
             }
     return None
 
 
-async def create_db_user(telegram_id: int, full_name: str, cdek_id: str = None):
+async def create_db_user(telegram_id: int, full_name: str, state: FSMContext, cdek_id: str = None):
     async with AsyncSessionLocal() as session:
         repo = SQLiteRepository(session)
         employee_object = await repo.create_employee(
@@ -78,6 +86,10 @@ async def create_db_user(telegram_id: int, full_name: str, cdek_id: str = None):
             )
 
         if employee_object:
+            new_db_session = await begin_new_session(employee_object.id)
+            await state.update_data({FSM_SESSION_ID_KEY: new_db_session.id})
+            logger.info(f"Для пользователя {telegram_id} стартовала сессия {new_db_session.id}")
+
             return {
                 "user_id": employee_object.telegram_id,
                 "name": getattr(employee_object, 'name', full_name),
@@ -156,7 +168,7 @@ async def ask_about_cdek_id(message: Message):
 # ==== Обработчики (Callback) ====
 @dp.callback_query(F.data == "cdek_no")
 async def cdek_no_callback_handler(callback: CallbackQuery, state: FSMContext):
-    await create_db_user(callback.from_user.id, callback.from_user.full_name)
+    await create_db_user(callback.from_user.id, callback.from_user.full_name, state)
     await state.set_state(UserStates.authenticated)
     
     # Убираем инлайн-кнопки
@@ -176,7 +188,7 @@ async def cdek_yes_callback_handler(callback: CallbackQuery, state: FSMContext):
 async def process_cdek_id_handler(message: Message, state: FSMContext):
     cdek_id_input = message.text
 
-    await create_db_user(message.from_user.id, message.from_user.full_name, cdek_id_input)
+    await create_db_user(message.from_user.id, message.from_user.full_name, state, cdek_id_input)
     await state.set_state(UserStates.authenticated)
     await message.answer("Отлично, я нашел вас!")
     await show_authenticated_menu(message, message.from_user.full_name)
@@ -188,9 +200,8 @@ async def process_cdek_id_handler(message: Message, state: FSMContext):
 async def logout_handler(message: Message, state: FSMContext):
     await state.clear()
     logger.info(f'Пользователь {message.from_user.id} вышел из системы')
-    # await message.answer("Вы успешно вышли из системы. Чтобы начать снова, отправьте любое сообщение.", reply_markup=ReplyKeyboardRemove())
-
-    user = await get_db_user(telegram_id=message.from_user.id)
+    await message.answer("Вы успешно вышли из системы. Чтобы начать снова, отправьте любое сообщение.", reply_markup=ReplyKeyboardRemove())
+    # await get_db_user(telegram_id=message.from_user.id, full_name=message.from_user.full_name, state=state)
 
 
 async def get_ai_answer(message_text, state: FSMContext):
@@ -261,7 +272,7 @@ async def entry_point_handler(message: Message, state: FSMContext):
     if message.text == '/start':
         await state.clear() # Полный сброс сессии и истории
     
-    user = await get_db_user(message.from_user.id, message.from_user.full_name)
+    user = await get_db_user(message.from_user.id, message.from_user.full_name, state)
     
     if user:
         # Пользователь найден (уже зарегистрирован)

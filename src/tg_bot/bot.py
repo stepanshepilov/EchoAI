@@ -12,6 +12,7 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.dispatcher.middlewares.base import BaseMiddleware
+from aiogram.enums import ChatAction
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -40,7 +41,7 @@ TEMP_AUDIO_DIR = BASE_DIR / "temp_audio"
 TEMP_AUDIO_DIR.mkdir(parents=True, exist_ok=True)
 
 SESSION_TIMEOUT_TASKS: Dict[int, asyncio.Task] = {}
-SESSION_TIMEOUT = 100
+SESSION_TIMEOUT = 500
 
 # ==== Инициализация ====
 bot = Bot(token=BOT_TOKEN)
@@ -48,27 +49,35 @@ dp = Dispatcher(storage=MemoryStorage())
 
 
 # ==== ДЛЯ РАБОТЫ С БАЗАМИ ДАННЫХ ====
+async def begin_new_session(employee_id: int):
+    async with AsyncSessionLocal() as session_2:
+        repo = SQLiteRepository(session_2)
+        new_db_session = await repo.start_new_session(employee_id)
+        return new_db_session
 
-async def get_db_user(telegram_id: int, full_name: str):
+async def get_db_user(telegram_id: int, full_name: str, state: FSMContext):
     async with AsyncSessionLocal() as session:
         repo = SQLiteRepository(session)
         
         employee_object = await repo.get_employee(
-            telegram_id=telegram_id,
-            name=full_name
+            telegram_id=telegram_id
         )
         
         if employee_object:
+            new_db_session = await begin_new_session(employee_object.id)
+            await state.update_data({FSM_SESSION_ID_KEY: new_db_session.id})
+            logger.info(f"Для пользователя {telegram_id} стартовала сессия {new_db_session.id}")
+
             # Возвращаем словарь для совместимости
             return {
                 "user_id": employee_object.telegram_id,
                 # Если в модели есть имя - берем его, иначе из Telegram
-                "name": getattr(employee_object, 'name', full_name),
+                "name": employee_object.name or full_name,
             }
     return None
 
 
-async def create_db_user(telegram_id: int, full_name: str, cdek_id: str = None):
+async def create_db_user(telegram_id: int, full_name: str, state: FSMContext, cdek_id: str = None):
     async with AsyncSessionLocal() as session:
         repo = SQLiteRepository(session)
         employee_object = await repo.create_employee(
@@ -78,6 +87,10 @@ async def create_db_user(telegram_id: int, full_name: str, cdek_id: str = None):
             )
 
         if employee_object:
+            new_db_session = await begin_new_session(employee_object.id)
+            await state.update_data({FSM_SESSION_ID_KEY: new_db_session.id})
+            logger.info(f"Для пользователя {telegram_id} стартовала сессия {new_db_session.id}")
+
             return {
                 "user_id": employee_object.telegram_id,
                 "name": getattr(employee_object, 'name', full_name),
@@ -113,15 +126,9 @@ async def find_user_by_cdek_id(cdek_id: str):
     """Ищет пользователя во внешней БД (СДЭК). Возвращает dict или None."""
     logger.info(f"[DB Stub] Поиск CDEK ID {cdek_id} во внешней БД...")
     # Имитация:
-    if cdek_id == "123":
-        return {"name": "Стёпа", "phone": "11117", "city": "Томск"}
+    if cdek_id == 123:
+        return {}
     return None
-
-async def create_local_user_from_cdek(user_id: int, cdek_id: str, cdek_data: dict):
-    """Создает пользователя в нашей БД на основе данных из СДЭК."""
-    logger.info(f"[DB Stub] Создание пользователя {user_id} из данных СДЭК {cdek_id}")
-    # Заглушка
-    return {"user_id": user_id, "name": cdek_data["name"], "cdek_id": cdek_id}
 
 
 
@@ -153,10 +160,19 @@ async def ask_about_cdek_id(message: Message):
     )
 
 
+# \start
+@dp.message(~StateFilter(None), CommandStart())
+async def logout_handler(message: Message, state: FSMContext):
+    await state.clear()
+    logger.info(f'Пользователь {message.from_user.id} вышел из системы')
+    await message.answer("Вы успешно вышли из сесси.", reply_markup=ReplyKeyboardRemove())
+    await entry_point_handler(message, state)
+
+
 # ==== Обработчики (Callback) ====
 @dp.callback_query(F.data == "cdek_no")
 async def cdek_no_callback_handler(callback: CallbackQuery, state: FSMContext):
-    await create_db_user(callback.from_user.id, callback.from_user.full_name)
+    await create_db_user(callback.from_user.id, callback.from_user.full_name, state)
     await state.set_state(UserStates.authenticated)
     
     # Убираем инлайн-кнопки
@@ -176,23 +192,19 @@ async def cdek_yes_callback_handler(callback: CallbackQuery, state: FSMContext):
 async def process_cdek_id_handler(message: Message, state: FSMContext):
     cdek_id_input = message.text
 
-    await create_db_user(message.from_user.id, message.from_user.full_name, cdek_id_input)
-    await state.set_state(UserStates.authenticated)
-    await message.answer("Отлично, я нашел вас!")
-    await show_authenticated_menu(message, message.from_user.full_name)
+    if await find_user_by_cdek_id(cdek_id=cdek_id_input):
+        await create_db_user(message.from_user.id, message.from_user.full_name, state, cdek_id_input)
+        await state.set_state(UserStates.authenticated)
+        await message.answer("Отлично, я нашел вас!")
+        await show_authenticated_menu(message, message.from_user.full_name)
+
+    else: 
+        await message.answer("Такого ID не сущетвует. Попробуйте ещё раз")
+    # return 
 
 
 
 # ==== Функционал для авторизованных пользователей ====
-@dp.message(UserStates.authenticated, CommandStart())
-async def logout_handler(message: Message, state: FSMContext):
-    await state.clear()
-    logger.info(f'Пользователь {message.from_user.id} вышел из системы')
-    # await message.answer("Вы успешно вышли из системы. Чтобы начать снова, отправьте любое сообщение.", reply_markup=ReplyKeyboardRemove())
-
-    user = await get_db_user(telegram_id=message.from_user.id)
-
-
 async def get_ai_answer(message_text, state: FSMContext):
     user_data = await state.get_data()
     session_id = user_data.get(FSM_SESSION_ID_KEY)
@@ -223,6 +235,7 @@ async def get_ai_answer(message_text, state: FSMContext):
 @dp.message(UserStates.authenticated, F.text)
 async def handle_text_message(message: Message, state: FSMContext):
 
+    await bot.send_chat_action(chat_id=message.chat.id, action=ChatAction.TYPING)
     ai_response_text = await get_ai_answer(message.text, state)
     await message.answer(ai_response_text)
 
@@ -240,8 +253,9 @@ async def handle_voice(message: Message, state: FSMContext):
     result = await transcribe_audio(str(dst_path))
 
     if "text" in result:
+        await bot.send_chat_action(chat_id=message.chat.id, action=ChatAction.TYPING)
         ai_response_text = await get_ai_answer(result["text"], state)
-        await message.answer(ai_response_text)
+        await message.answer(ai_response_text)  
     else:
         await message.answer("Не удалось распознать речь 😔")
 
@@ -250,6 +264,7 @@ async def handle_voice(message: Message, state: FSMContext):
 # ==== Запуск ====
 async def set_main_menu(bot: Bot):
     main_menu_commands = [BotCommand(command='/start', description='Перезапустить бота / Главное меню 🔥')]
+    # проброс по websoscket строки {'user_id': id, 'event': 'session_started'}
     await bot.set_my_commands(main_menu_commands)
 
 
@@ -261,7 +276,7 @@ async def entry_point_handler(message: Message, state: FSMContext):
     if message.text == '/start':
         await state.clear() # Полный сброс сессии и истории
     
-    user = await get_db_user(message.from_user.id, message.from_user.full_name)
+    user = await get_db_user(message.from_user.id, message.from_user.full_name, state)
     
     if user:
         # Пользователь найден (уже зарегистрирован)

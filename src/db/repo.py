@@ -5,13 +5,21 @@ from typing import List, Dict, Any, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy import update
-from models import Employee, DialogueSession, ChatMessage, DialogueAnalysis
+from src.db.models import Employee, DialogueSession, ChatMessage, DialogueAnalysis
 
 logger = logging.getLogger(__name__)
 
 class BaseRepository(ABC):
     @abstractmethod
     async def get_or_create_employee(self, telegram_id: int) -> Employee:
+        pass
+
+    @abstractmethod
+    async def get_employee(self, telegram_id: int) -> Employee:
+        pass    
+
+    @abstractmethod
+    async def create_employee(self, telegram_id: int) -> Employee:
         pass
 
     @abstractmethod
@@ -77,6 +85,22 @@ class SQLiteRepository(BaseRepository):
             self.session.add(employee)
             await self.session.commit()
             await self.session.refresh(employee)
+        return employee
+    
+    async def get_employee(self, telegram_id: int, name: str = None, cdek_id: str = None) -> Employee:
+        result = await self.session.execute(
+            select(Employee).where(Employee.telegram_id == telegram_id)
+        )
+        employee = result.scalar_one_or_none()
+        logger.info(f"Сотрудник  с telegram_id: {telegram_id} найден")
+        return employee
+
+    async def create_employee(self, telegram_id: int, name: str = None, cdek_id: str = None) -> Employee:
+        logger.info(f"Создание нового сотрудника с telegram_id: {telegram_id}")
+        employee = Employee(telegram_id=telegram_id, name=name, cdek_id=cdek_id)
+        self.session.add(employee)
+        await self.session.commit()
+        await self.session.refresh(employee)
         return employee
 
     async def start_new_session(self, employee_id: int) -> DialogueSession:

@@ -29,7 +29,7 @@ from src.db.session import AsyncSessionLocal
 
 # ==== Настройки ====
 AI = ChatLM()
-FSM_CONTEXT_HISTORY_KEY = 'conversation_history'
+FSM_SESSION_ID_KEY = 'current_session_id'
 
 db_file = settings.DATABASE_URL.split('///')[-1]
 
@@ -49,16 +49,13 @@ dp = Dispatcher(storage=MemoryStorage())
 
 # ==== ДЛЯ РАБОТЫ С БАЗАМИ ДАННЫХ ====
 
-async def get_or_create_db_user(telegram_id: int, full_name: str = None):
-    """
-    Универсальная функция: находит или создает пользователя и возвращает dict.
-    """
+async def get_db_user(telegram_id: int, full_name: str):
     async with AsyncSessionLocal() as session:
         repo = SQLiteRepository(session)
         
-        employee_object = await repo.get_or_create_employee(
+        employee_object = await repo.get_employee(
             telegram_id=telegram_id,
-            # full_name=full_name
+            name=full_name
         )
         
         if employee_object:
@@ -66,8 +63,49 @@ async def get_or_create_db_user(telegram_id: int, full_name: str = None):
             return {
                 "user_id": employee_object.telegram_id,
                 # Если в модели есть имя - берем его, иначе из Telegram
-                "name": getattr(employee_object, 'name', full_name or 'Пользователь'),
+                "name": getattr(employee_object, 'name', full_name),
             }
+    return None
+
+
+async def create_db_user(telegram_id: int, full_name: str, cdek_id: str = None):
+    async with AsyncSessionLocal() as session:
+        repo = SQLiteRepository(session)
+        employee_object = await repo.create_employee(
+            telegram_id=telegram_id,
+            name=full_name, 
+            cdek_id=cdek_id
+            )
+
+        if employee_object:
+            return {
+                "user_id": employee_object.telegram_id,
+                "name": getattr(employee_object, 'name', full_name),
+            }
+    return None
+
+
+async def start_user_session(telegram_id: int, state: FSMContext):
+    """
+    Находит пользователя по telegram_id, создает для него новую сессию диалога в БД,
+    сохраняет session_id в FSM и возвращает объект Employee.
+    Если пользователь не найден, возвращает None.
+    """
+    async with AsyncSessionLocal() as session:
+        repo = SQLiteRepository(session)
+        # 1. Находим пользователя в нашей БД по его telegram_id
+        user = await repo.get_employee(telegram_id=telegram_id)
+        
+        if user:
+            # 2. Если нашли, создаем для него новую сессию диалога
+            new_db_session = await repo.start_new_session(employee_id=user.id) # <-- Используем user.id (PK)
+            
+            # 3. Сохраняем ID этой сессии в FSM для дальнейшего использования
+            await state.update_data({FSM_SESSION_ID_KEY: new_db_session.id})
+            logger.info(f"Для пользователя {telegram_id} (ID: {user.id}) стартовала сессия {new_db_session.id}")
+            
+            return user
+            
     return None
 
 
@@ -118,7 +156,7 @@ async def ask_about_cdek_id(message: Message):
 # ==== Обработчики (Callback) ====
 @dp.callback_query(F.data == "cdek_no")
 async def cdek_no_callback_handler(callback: CallbackQuery, state: FSMContext):
-    await get_or_create_db_user(callback.from_user.id, callback.from_user.full_name)
+    await create_db_user(callback.from_user.id, callback.from_user.full_name)
     await state.set_state(UserStates.authenticated)
     
     # Убираем инлайн-кнопки
@@ -137,16 +175,11 @@ async def cdek_yes_callback_handler(callback: CallbackQuery, state: FSMContext):
 @dp.message(UserStates.waiting_for_cdek_id, F.text)
 async def process_cdek_id_handler(message: Message, state: FSMContext):
     cdek_id_input = message.text
-    cdek_data = await find_user_by_cdek_id(cdek_id_input)
-    
-    if cdek_data:
-        # CDEK ID найден во внешней базе
-        await create_local_user_from_cdek(message.from_user.id, cdek_id_input, cdek_data)
-        await state.set_state(UserStates.authenticated)
-        await message.answer("Отлично, я нашел вас!")
-        await show_authenticated_menu(message, cdek_data["name"])
-    else:
-        await message.answer("К сожалению, я не нашел такой CDEK ID. Попробуйте еще раз или нажмите /start, чтобы начать заново.")
+
+    await create_db_user(message.from_user.id, message.from_user.full_name, cdek_id_input)
+    await state.set_state(UserStates.authenticated)
+    await message.answer("Отлично, я нашел вас!")
+    await show_authenticated_menu(message, message.from_user.full_name)
 
 
 
@@ -155,44 +188,43 @@ async def process_cdek_id_handler(message: Message, state: FSMContext):
 async def logout_handler(message: Message, state: FSMContext):
     await state.clear()
     logger.info(f'Пользователь {message.from_user.id} вышел из системы')
-    await message.answer("Вы успешно вышли из системы. Чтобы начать снова, отправьте любое сообщение.", reply_markup=ReplyKeyboardRemove())
+    # await message.answer("Вы успешно вышли из системы. Чтобы начать снова, отправьте любое сообщение.", reply_markup=ReplyKeyboardRemove())
+
+    user = await get_db_user(telegram_id=message.from_user.id)
 
 
 async def get_ai_answer(message_text, state: FSMContext):
-    # Загружаем текущую историю разговора из FSM
     user_data = await state.get_data()
-    conversation_history = user_data.get(FSM_CONTEXT_HISTORY_KEY, [])
-    
-    # Загружаем текущую историю разговора из F):
-    conversation_history.append(
-        {"role": "user", "content": message_text}
-    )
-    try:
-        ai_response_text = await AI.get_response(
-            conversation_history=conversation_history
-        )
-    except Exception as e:
-        logger.error(f"Ошибка при запросе к AI: {e}")
-        ai_response_text = "Произошла ошибка при обработке запроса. Попробуйте позже."
+    session_id = user_data.get(FSM_SESSION_ID_KEY)
 
-    # Добавляем ответ AI в историю
-    conversation_history.append(
-        {"role": "assistant", "content": ai_response_text}
-    )
-    
-    # Сохраняем обновленную историю обратно в FSM
-    await state.update_data(
-        **{FSM_CONTEXT_HISTORY_KEY: conversation_history}
-    )
-    print(conversation_history)
+    async with AsyncSessionLocal() as session:
+        repo = SQLiteRepository(session)
+        # Сохраняем сообщение пользователя
+        await repo.add_message(session_id=session_id, role="user", content=message_text)
+        # Получаем историю
+        history_for_ai = await repo.get_conversation_history(session_id=session_id)
+        print('history_for_ai' , history_for_ai)
+
+    try:
+        ai_response_text = await AI.get_response(conversation_history=history_for_ai)
+    except Exception as e:
+        logger.error(f"Ошибка AI: {e}")
+        return "Произошла ошибка сессии, пожалуйста, нажмите /start"
+        
+    async with AsyncSessionLocal() as db_session:
+        repo = SQLiteRepository(db_session)
+        # Сохраняем ответ AI
+        await repo.add_message(session_id=session_id, role="assistant", content=ai_response_text)
+
     return ai_response_text
+
 
 # Текстовые сообщения
 @dp.message(UserStates.authenticated, F.text)
 async def handle_text_message(message: Message, state: FSMContext):
 
-    # ai_response_text = await get_ai_answer(message.text, state)
-    await message.answer('ai_response_text')
+    ai_response_text = await get_ai_answer(message.text, state)
+    await message.answer(ai_response_text)
 
 
 # Голосовые сообщения (voice)
@@ -229,7 +261,7 @@ async def entry_point_handler(message: Message, state: FSMContext):
     if message.text == '/start':
         await state.clear() # Полный сброс сессии и истории
     
-    user = await get_or_create_db_user(message.from_user.id, message.from_user.full_name)
+    user = await get_db_user(message.from_user.id, message.from_user.full_name)
     
     if user:
         # Пользователь найден (уже зарегистрирован)

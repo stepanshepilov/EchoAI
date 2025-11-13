@@ -7,13 +7,13 @@ import numpy as np
 from fastapi import APIRouter, HTTPException, Query, Depends, WebSocket, WebSocketDisconnect
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc
-from ...db.models import BurnoutPrediction
-from ...db.session import get_db
+from src.db.models import BurnoutPrediction
+from src.db.session import get_db
 
 from .models import TeamPulseResponse, EmployeePulse, ExplanationResponse
-from ...ai_services.prediction_service import prediction_service
-from ...db.repo import SQLiteRepository
-from ...db.session import get_db
+from src.ai_services.prediction_service import prediction_service
+from src.db.repo import SQLiteRepository
+from src.db.session import get_db
 
 # Раскомментировать, когда FeatureService будет реализован
 # from ...ai_services.feature_service import feature_service
@@ -29,17 +29,25 @@ token_to_employee_id_cache = {}
 
 
 # =================================================================================
-
+def convert_numpy_types(obj):
+    if isinstance(obj, dict):
+        return {k: convert_numpy_types(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [convert_numpy_types(v) for v in obj]
+    elif hasattr(obj, "item"):  # numpy scalar
+        return obj.item()
+    else:
+        return obj
 
 @router.get("/dashboard/team-pulse", response_model=TeamPulseResponse, summary="Пульс Команды")
 async def get_team_pulse(db: AsyncSession = Depends(get_db)):
     global token_to_employee_id_cache
     token_to_employee_id_cache.clear()  # Очищаем старые токены при каждом запросе
-
+    logger.info('Запуск get_team_pulse')
     repo = SQLiteRepository(db)
     try:
 
-        # Получаем из БД список всех сотрудников
+        logger.info('Получение всех сотрудников из БД')
         all_employees = await repo.get_all_employees()
         if not all_employees:
             raise HTTPException(status_code=404, detail="Сотрудники не найдены.")
@@ -51,7 +59,31 @@ async def get_team_pulse(db: AsyncSession = Depends(get_db)):
         for employee in all_employees:
             # Собираем фичи для сотрудника (пока используется мок)
             # features = await feature_service.build_features_for_employee(employee.id)
-            features = pd.DataFrame([{"age": 30, "days_since_vacation": employee.id * 50}])
+            features = pd.DataFrame([{
+                "age": 30,
+                "gender": 1,  # 0 - жен, 1 - муж (или как у тебя в модели)
+                "tenure_months": 24,
+                "tasks_completed_last_30d": 10,
+                "tasks_failed_last_30d": 1,
+                "sick_leave_count_last_30d": 0,
+                "short_sick_leaves_count_last_30d": 0,
+                "total_sick_days_last_30d": 0,
+                "avg_sentiment_last_30d": 0.2,
+                "tasks_completed_last_90d": 30,
+                "tasks_failed_last_90d": 3,
+                "sick_leave_count_last_90d": 1,
+                "short_sick_leaves_count_last_90d": 1,
+                "total_sick_days_last_90d": 2,
+                "avg_sentiment_last_90d": 0.15,
+                "tasks_completed_last_365d": 120,
+                "tasks_failed_last_365d": 10,
+                "sick_leave_count_last_365d": 3,
+                "short_sick_leaves_count_last_365d": 2,
+                "total_sick_days_last_365d": 5,
+                "avg_sentiment_last_365d": 0.1,
+                "days_since_last_vacation": 150,
+                "sentiment_trend_last_90d": -0.05
+            }])
 
             # Предсказываем вероятность
             probability = await prediction_service.predict_proba(features)
@@ -60,7 +92,10 @@ async def get_team_pulse(db: AsyncSession = Depends(get_db)):
             token = str(uuid.uuid4())
             token_to_employee_id_cache[token] = employee.id
 
-            employee_pulses.append(EmployeePulse(token=token, risk_probability=probability))
+            # Добавить реальную логику sentiment_trend
+            sentiment_trend = np.random.uniform(-0.5, 0.5)
+
+            employee_pulses.append(EmployeePulse(token=token, risk_probability=probability, sentiment_trend=0.0))
 
             # Агрегируем результаты
             total_risk_score += probability
@@ -100,13 +135,39 @@ async def get_prediction_explanation(employee_token: str):
 
         # Соберем фичи для этого сотрудника (пока используется мок)
         # features = await feature_service.build_features_for_employee(employee_id)
-        features = pd.DataFrame([{"age": 35, "days_since_last_vacation": 280}])
+        features = pd.DataFrame([{
+            "age": 30,
+            "gender": 1,  # 0 - жен, 1 - муж (или как у тебя в модели)
+            "tenure_months": 24,
+            "tasks_completed_last_30d": 10,
+            "tasks_failed_last_30d": 1,
+            "sick_leave_count_last_30d": 0,
+            "short_sick_leaves_count_last_30d": 0,
+            "total_sick_days_last_30d": 0,
+            "avg_sentiment_last_30d": 0.2,
+            "tasks_completed_last_90d": 30,
+            "tasks_failed_last_90d": 3,
+            "sick_leave_count_last_90d": 1,
+            "short_sick_leaves_count_last_90d": 1,
+            "total_sick_days_last_90d": 2,
+            "avg_sentiment_last_90d": 0.15,
+            "tasks_completed_last_365d": 120,
+            "tasks_failed_last_365d": 10,
+            "sick_leave_count_last_365d": 3,
+            "short_sick_leaves_count_last_365d": 2,
+            "total_sick_days_last_365d": 5,
+            "avg_sentiment_last_365d": 0.1,
+            "days_since_last_vacation": 150,
+            "sentiment_trend_last_90d": -0.05
+        }])
 
         # Вызовем сервис для получения объяснения
         explanation_data = await prediction_service.explain(features)
 
         if "error" in explanation_data:
             raise HTTPException(status_code=503, detail="Сервис предсказаний временно недоступен.")
+
+        explanation_data = convert_numpy_types(explanation_data)
 
         return ExplanationResponse(token=employee_token, **explanation_data)
 

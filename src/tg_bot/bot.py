@@ -160,9 +160,9 @@ async def ask_about_cdek_id(message: Message):
     )
 
 
-# \start
+# /start
 @dp.message(~StateFilter(None), CommandStart())
-async def logout_handler(message: Message, state: FSMContext):
+async def restart(message: Message, state: FSMContext):
     await state.clear()
     logger.info(f'Пользователь {message.from_user.id} вышел из системы')
     await message.answer("Вы успешно вышли из сесси.", reply_markup=ReplyKeyboardRemove())

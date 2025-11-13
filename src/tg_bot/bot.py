@@ -26,6 +26,7 @@ from src.ai_services.base import ChatLM
 from src.settings import settings
 from src.db.repo import SQLiteRepository
 from src.db.session import AsyncSessionLocal
+from src.tg_bot.ws_service import ws_notifier 
 
 
 # ==== Настройки ====
@@ -67,6 +68,13 @@ async def get_db_user(telegram_id: int, full_name: str, state: FSMContext):
             new_db_session = await begin_new_session(employee_object.id)
             await state.update_data({FSM_SESSION_ID_KEY: new_db_session.id})
             logger.info(f"Для пользователя {telegram_id} стартовала сессия {new_db_session.id}")
+
+            
+            await ws_notifier.send({
+                    "user_id": telegram_id,
+                    "event": "session_started",
+                    "session_id": new_db_session.id
+                })
 
             # Возвращаем словарь для совместимости
             return {
@@ -360,13 +368,22 @@ class SessionTimeoutMiddleware(BaseMiddleware):
         
 
 
+   
+
 async def main():
-    
     dp.message.middleware(SessionTimeoutMiddleware())
 
     await set_main_menu(bot)
     await bot.delete_webhook(drop_pending_updates=True)
-    await dp.start_polling(bot)
+    # await dp.start_polling(bot)
+    
+    try:
+        await ws_notifier.start()
+        await dp.start_polling(bot)
+    finally:
+        await ws_notifier.stop()
+        await bot.session.close() 
+
 
 if __name__ == "__main__":
     asyncio.run(main())

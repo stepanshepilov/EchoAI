@@ -38,7 +38,7 @@ async def analyze_user_session(telegram_id: int) -> Dict[str, Any]:
 
         # 3. Взять набор сообщений по session_id
         messages = await repo.get_conversation_history(session_id=session_id)
-        messages = messages[-20:]
+        messages = messages[-20:]   
         if not messages:
             logger.warning(f"Сессия {session_id} пуста, анализ невозможен.")
             return {"error": "Сессия не содержит сообщений."}

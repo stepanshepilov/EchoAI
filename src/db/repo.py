@@ -5,7 +5,7 @@ from typing import List, Dict, Any, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy import update
-from .models import Employee, DialogueSession, ChatMessage, DialogueAnalysis
+from models import Employee, DialogueSession, ChatMessage, DialogueAnalysis
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +60,10 @@ class InMemoryRepository(BaseRepository):
 class SQLiteRepository(BaseRepository):
     def __init__(self, session: AsyncSession):
         self.session = session
+
+    async def get_all_employees(self) -> List[Employee]:
+        result = await self.session.execute(select(Employee))
+        return list(result.scalars().all())
 
     async def get_or_create_employee(self, telegram_id: int) -> Employee:
         result = await self.session.execute(

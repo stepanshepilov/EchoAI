@@ -7,7 +7,6 @@ class EmployeePulse(BaseModel):
     sentiment_trend: float
 
 class TeamPulseResponse(BaseModel):
-    team_id: str
     overall_risk_score: float
     risk_dynamics_weekly: str
     distribution: Dict[str, int]

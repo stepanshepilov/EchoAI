@@ -45,3 +45,15 @@ class DialogueAnalysis(Base):
     is_burnout_risk_detected = Column(Boolean)
     
     session = relationship("DialogueSession", back_populates="analysis")
+
+
+class BurnoutPrediction(Base):
+    __tablename__ = 'burnout_predictions'
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey('employees.id'), nullable=False, index=True)
+    topics_from_dialogues = Column(JSON, nullable=False)
+    probability_of_burnout = Column(Float, nullable=False)
+    shap_explanations = Column(JSON, nullable=False)
+
+
+    employee = relationship("Employee", backref="burnout_predictions")

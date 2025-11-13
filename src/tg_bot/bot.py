@@ -2,6 +2,8 @@ import os
 import uuid
 import asyncio
 from pathlib import Path
+from typing import Callable, Dict, Any, Awaitable
+import time
 
 from aiogram import Bot, Dispatcher, F
 from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove, BotCommand, InlineKeyboardButton, InlineKeyboardMarkup, CallbackQuery
@@ -9,6 +11,7 @@ from aiogram.filters import CommandStart, StateFilter
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.storage.memory import MemoryStorage
+from aiogram.dispatcher.middlewares.base import BaseMiddleware
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -19,18 +22,54 @@ logger = logging.getLogger(__name__)
 
 from src.ai_services.whisper_service.speech_to_text import transcribe_audio
 from src.ai_services.base import ChatLM
+from src.settings import settings
+from src.db.repo import SQLiteRepository
+from src.db.session import AsyncSessionLocal
+
+
+# ==== Настройки ====
 AI = ChatLM()
 FSM_CONTEXT_HISTORY_KEY = 'conversation_history'
 
-# ==== ЗАГЛУШКИ ДЛЯ РАБОТЫ С БАЗАМИ ДАННЫХ ====
+db_file = settings.DATABASE_URL.split('///')[-1]
 
-async def find_user_in_local_db(user_id: int):
-    """Ищет пользователя в нашей основной БД. Возвращает dict или None."""
-    logger.info(f"[DB Stub] Поиск пользователя {user_id} в локальной БД...")
-    # Имитация: предположим, что пользователя 12345 нет, а 54321 есть
-    if user_id == 1231423505: 
-        return {"user_id": 1231423505, "name": "Kate Semenova", "cdek_id": "CDEK-777"}
-    return None 
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+
+BASE_DIR = Path(__file__).resolve().parent
+TEMP_AUDIO_DIR = BASE_DIR / "temp_audio"
+TEMP_AUDIO_DIR.mkdir(parents=True, exist_ok=True)
+
+SESSION_TIMEOUT_TASKS: Dict[int, asyncio.Task] = {}
+SESSION_TIMEOUT = 100
+
+# ==== Инициализация ====
+bot = Bot(token=BOT_TOKEN)
+dp = Dispatcher(storage=MemoryStorage())
+
+
+# ==== ДЛЯ РАБОТЫ С БАЗАМИ ДАННЫХ ====
+
+async def get_or_create_db_user(telegram_id: int, full_name: str = None):
+    """
+    Универсальная функция: находит или создает пользователя и возвращает dict.
+    """
+    async with AsyncSessionLocal() as session:
+        repo = SQLiteRepository(session)
+        
+        employee_object = await repo.get_or_create_employee(
+            telegram_id=telegram_id,
+            # full_name=full_name
+        )
+        
+        if employee_object:
+            # Возвращаем словарь для совместимости
+            return {
+                "user_id": employee_object.telegram_id,
+                # Если в модели есть имя - берем его, иначе из Telegram
+                "name": getattr(employee_object, 'name', full_name or 'Пользователь'),
+            }
+    return None
+
 
 async def find_user_by_cdek_id(cdek_id: str):
     """Ищет пользователя во внешней БД (СДЭК). Возвращает dict или None."""
@@ -40,29 +79,12 @@ async def find_user_by_cdek_id(cdek_id: str):
         return {"name": "Стёпа", "phone": "11117", "city": "Томск"}
     return None
 
-async def create_local_user_simple(user_id: int, full_name: str):
-    """Создает простого пользователя в нашей БД."""
-    logger.info(f"[DB Stub] Создание простого пользователя: {user_id}, {full_name}")
-    # Заглушка
-    return {"user_id": user_id, "name": full_name, "cdek_id": None}
-
 async def create_local_user_from_cdek(user_id: int, cdek_id: str, cdek_data: dict):
     """Создает пользователя в нашей БД на основе данных из СДЭК."""
     logger.info(f"[DB Stub] Создание пользователя {user_id} из данных СДЭК {cdek_id}")
     # Заглушка
     return {"user_id": user_id, "name": cdek_data["name"], "cdek_id": cdek_id}
 
-
-# ==== Настройки ====
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-BASE_DIR = Path(__file__).resolve().parent
-TEMP_AUDIO_DIR = BASE_DIR / "temp_audio"
-TEMP_AUDIO_DIR.mkdir(parents=True, exist_ok=True)
-
-
-# ==== Инициализация ====
-bot = Bot(token=BOT_TOKEN)
-dp = Dispatcher(storage=MemoryStorage())
 
 
 # === Клавиатуры ===
@@ -83,7 +105,7 @@ class UserStates(StatesGroup):
 # ==== Приветствия ====
 async def show_authenticated_menu(message: Message, user_name: str):
     await message.answer(
-        f"Добро пожаловать, {user_name}!\n\nПривет! Как прошла твоя рабочая неделя? Что было самым запоминающимся?",
+        f"Добро пожаловать, {user_name}!\n\nКак прошла твоя рабочая неделя? Что было самым запоминающимся?",
     )
 
 async def ask_about_cdek_id(message: Message):
@@ -96,7 +118,7 @@ async def ask_about_cdek_id(message: Message):
 # ==== Обработчики (Callback) ====
 @dp.callback_query(F.data == "cdek_no")
 async def cdek_no_callback_handler(callback: CallbackQuery, state: FSMContext):
-    await create_local_user_simple(callback.from_user.id, callback.from_user.full_name)
+    await get_or_create_db_user(callback.from_user.id, callback.from_user.full_name)
     await state.set_state(UserStates.authenticated)
     
     # Убираем инлайн-кнопки
@@ -125,6 +147,8 @@ async def process_cdek_id_handler(message: Message, state: FSMContext):
         await show_authenticated_menu(message, cdek_data["name"])
     else:
         await message.answer("К сожалению, я не нашел такой CDEK ID. Попробуйте еще раз или нажмите /start, чтобы начать заново.")
+
+
 
 # ==== Функционал для авторизованных пользователей ====
 @dp.message(UserStates.authenticated, CommandStart())
@@ -160,13 +184,15 @@ async def get_ai_answer(message_text, state: FSMContext):
     await state.update_data(
         **{FSM_CONTEXT_HISTORY_KEY: conversation_history}
     )
+    print(conversation_history)
     return ai_response_text
 
+# Текстовые сообщения
 @dp.message(UserStates.authenticated, F.text)
 async def handle_text_message(message: Message, state: FSMContext):
 
-    ai_response_text = await get_ai_answer(message.text, state)
-    await message.answer(ai_response_text)
+    # ai_response_text = await get_ai_answer(message.text, state)
+    await message.answer('ai_response_text')
 
 
 # Голосовые сообщения (voice)
@@ -188,21 +214,12 @@ async def handle_voice(message: Message, state: FSMContext):
         await message.answer("Не удалось распознать речь 😔")
 
 
+
 # ==== Запуск ====
 async def set_main_menu(bot: Bot):
     main_menu_commands = [BotCommand(command='/start', description='Перезапустить бота / Главное меню 🔥')]
     await bot.set_my_commands(main_menu_commands)
 
-
-# @dp.message(CommandStart(), UserStates.authenticated)
-# async def start_handler(message: Message, state: FSMContext):
-#     await state.clear()
-#     user = await find_user_in_local_db(message.from_user.id)
-#     if user:
-#         await state.set_state(UserStates.authenticated)
-#         await show_authenticated_menu(message, user["name"])
-#     else:
-#         await ask_about_cdek_id(message)
 
 
 # Ловит /start и ЛЮБОЕ другое сообщение от пользователя без состояния
@@ -212,7 +229,7 @@ async def entry_point_handler(message: Message, state: FSMContext):
     if message.text == '/start':
         await state.clear() # Полный сброс сессии и истории
     
-    user = await find_user_in_local_db(message.from_user.id)
+    user = await get_or_create_db_user(message.from_user.id, message.from_user.full_name)
     
     if user:
         # Пользователь найден (уже зарегистрирован)
@@ -233,7 +250,73 @@ async def entry_point_handler(message: Message, state: FSMContext):
         await ask_about_cdek_id(message)
 
 
+#  Функция, которую будет выполнять фоновый тайме
+async def _session_timeout(
+    user_id: int,
+    chat_id: int,
+    state: FSMContext,
+    bot: Bot
+):
+    """
+    Ожидает заданное время и очищает состояние пользователя, если задача не была отменена.
+    """
+    try:
+        await asyncio.sleep(SESSION_TIMEOUT)
+        
+        logger.info(f"Сессия для пользователя {user_id} истекла. Очистка состояния.")
+        await state.clear()
+        
+        # Опционально: отправляем сообщение пользователю
+        await bot.send_message(
+            chat_id,
+            "Ваша сессия завершена. "
+            "Чтобы продолжить, просто отправьте любое сообщение.",
+            reply_markup=ReplyKeyboardRemove()
+        )
+    except asyncio.CancelledError:
+        # Это нормальное поведение, когда мы отменяем задачу при новой активности
+        logger.info(f"Таймер сессии для пользователя {user_id} был сброшен.")
+    finally:
+        # Убираем завершенную или отмененную задачу из словаря
+        SESSION_TIMEOUT_TASKS.pop(user_id, None)
+
+# Middleware для управления таймерами сессий 
+class SessionTimeoutMiddleware(BaseMiddleware):
+    async def __call__(
+        self,
+        handler: Callable[[Message, Dict[str, Any]], Awaitable[Any]],
+        event: Message,
+        data: Dict[str, Any]
+    ) -> Any:
+        state: FSMContext = data['state']
+        user_id = event.from_user.id
+
+        # 1. Отменяем предыдущий таймер, если он есть
+        if user_id in SESSION_TIMEOUT_TASKS:
+            SESSION_TIMEOUT_TASKS[user_id].cancel()
+
+        # 2. Создаем и запускаем новый таймер в фоне
+        # Передаем bot в data, чтобы он был доступен
+        data['bot_instance'] = data['bot']
+        session_task = asyncio.create_task(
+            _session_timeout(
+                user_id=user_id,
+                chat_id=event.chat.id,
+                state=state,
+                bot=data['bot']
+            )
+        )
+        SESSION_TIMEOUT_TASKS[user_id] = session_task
+        
+        # 3. Передаем управление дальше, чтобы обработать сообщение
+        return await handler(event, data)
+        
+
+
 async def main():
+    
+    dp.message.middleware(SessionTimeoutMiddleware())
+
     await set_main_menu(bot)
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)

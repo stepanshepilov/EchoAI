@@ -11,8 +11,8 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 MOCK_EMPLOYEES = [
-    {"id": 1, "telegram_id": 111111111},
-    {"id": 2, "telegram_id": 222222222},
+    {"id": 1, "telegram_id": 111111111, 'name': 'Чувак 1', 'cdek_id': '123'},
+    {"id": 2, "telegram_id": 222222222, 'cdek_id': '334'},
     {"id": 3, "telegram_id": 333333333},
 ]
 

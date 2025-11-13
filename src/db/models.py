@@ -8,6 +8,8 @@ class Employee(Base):
     __tablename__ = 'employees'
     id = Column(Integer, primary_key=True, index=True)
     telegram_id = Column(Integer, unique=True, index=True)
+    name = Column(String, nullable=True) 
+    cdek_id = Column(String, nullable=True, unique=True)
     # Здесь будут другие поля, которые мы получим от организаторов
 
     dialogue_sessions = relationship("DialogueSession", back_populates="employee", cascade="all, delete-orphan")

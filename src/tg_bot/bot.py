@@ -167,14 +167,15 @@ async def restart(message: Message, state: FSMContext):
 
 
 # /finish
-@dp.message(Command("finish"), ~StateFilter(None))
+@dp.message(Command("finish"), StateFilter('*'))
+@dp.message(StateFilter(None))
 async def logout(message: Message, state: FSMContext):
     await state.clear()
-    logger.info(f'Пользователь {message.from_user.id} вышел из системы')
-    await message.answer("Сессия завершена. Нажмите /start, чтобы начать новую", reply_markup=ReplyKeyboardRemove())
-    await analyze_user_session(message.from_user.id)
-    # await entry_point_handler(message, state)
-
+    if await state.get_state() is not None:
+        logger.info(f'Пользователь {message.from_user.id} вышел из системы')
+        await message.answer("Сессия завершена. Нажмите /start, чтобы начать новую", reply_markup=ReplyKeyboardRemove())
+        await analyze_user_session(message.from_user.id)
+    else: await message.answer("Нажмите /start, чтобы начать сессию.")
 
 
 # ==== ЛОГИКА ОПРОСА ====
@@ -371,6 +372,7 @@ async def handle_voice(message: Message, state: FSMContext):
 
 # Ловит /start и ЛЮБОЕ другое сообщение от пользователя без состояния
 @dp.message(StateFilter(None))
+@dp.message(~Command("finish"))
 async def entry_point_handler(message: Message, state: FSMContext):
     # Сначала проверяем, не является ли это командой /start, которая требует особого поведения
     if message.text == '/start':
@@ -381,22 +383,23 @@ async def entry_point_handler(message: Message, state: FSMContext):
     if user:
         # Пользователь найден (уже зарегистрирован)
         logger.info(f"Вход для пользователя {user['user_id']}")
-        await state.set_state(UserStates.authenticated)
+        # await state.set_state(UserStates.authenticated)
         # await start_survey(message, state, is_new_user=False)
 
         
         # Если это было /start, показываем приветствие
-        if message.text == '/start':
-            await show_authenticated_menu(message, user["name"], state)
-        elif message.voice:
-            await handle_voice(message, state)
-        elif message.text:
-            await handle_text_message(message, state)
+        # if message.text == '/start':
+        await show_authenticated_menu(message, user["name"], state)
+        # elif message.voice:
+        #     await handle_voice(message, state)
+        # elif message.text:
+        #     await handle_text_message(message, state)
             
     else:
         # Пользователь не найден, запускаем регистрацию
         logger.info(f"Новый пользователь {message.from_user.id}, запуск регистрации.")
         await create_db_user(message.from_user.id, message.from_user.full_name, state)
+        await message.answer(f"Добро пожаловать, {message.from_user.full_name}!",)
         await start_survey(message, state, is_new_user=True)
 
         # await ask_about_cdek_id(message)

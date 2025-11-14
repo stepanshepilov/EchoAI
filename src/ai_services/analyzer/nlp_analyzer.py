@@ -1,6 +1,6 @@
 import logging
 from typing import Dict, Any
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field, ValidationError 
 from ..prompts.nlp_analyzer import SYSTEM_PROMPT_ANALYZER
 from ..base import BaseLM
 
@@ -16,6 +16,11 @@ class SentimentAnalysisResponse(BaseModel):
     is_burnout_risk_detected : bool = Field(
         ...,
         description="Флаг, указывающий на прямые или косвенные признаки выгорания в тексте (True/False)."
+    )
+
+    comment: str = Field(
+        ...,
+        description="Краткое резюме или цитата, объясняющая анализ."
     )
 
 class NlpService(BaseLM):

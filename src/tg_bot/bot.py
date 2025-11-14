@@ -28,6 +28,7 @@ from src.db.repo import SQLiteRepository
 from src.db.session import AsyncSessionLocal
 from src.tg_bot.ws_service import ws_notifier 
 from src.ai_services.analyzer.analyzer_service import analyze_user_session
+from src.ai_services.prompts.questions import QUESTIONS, ANSWER_OPTIONS
 
 # ==== Настройки ====
 AI = ChatLM()
@@ -130,14 +131,6 @@ async def start_user_session(telegram_id: int, state: FSMContext):
     return None
 
 
-async def find_user_by_cdek_id(cdek_id: str):
-    """Ищет пользователя во внешней БД (СДЭК). Возвращает dict или None."""
-    logger.info(f"[DB Stub] Поиск CDEK ID {cdek_id} во внешней БД...")
-    # Имитация:
-    if cdek_id == 123:
-        return {}
-    return None
-
 
 
 # === Клавиатуры ===
@@ -151,20 +144,15 @@ def get_cdek_question_keyboard() -> InlineKeyboardMarkup:
 
 # === Состояния ===
 class UserStates(StatesGroup):
-    waiting_for_cdek_id = State() # Процесс регистрации
+    waiting_for_cdek_id = State() # Процесс ожидани CDEK ID
     authenticated = State() # Пользователь зарегестрирован
+    in_survey = State() # Пользовать проходит опрос
 
 
 # ==== Приветствия ====
 async def show_authenticated_menu(message: Message, user_name: str):
     await message.answer(
-        f"Добро пожаловать, {user_name}!\n\nКак прошла твоя рабочая неделя? Что было самым запоминающимся?",
-    )
-
-async def ask_about_cdek_id(message: Message):
-    await message.answer(
-        "Я не нашел вас в своей базе.\n\nЕсть ли у вас CDEK ID? \n\nИли нажмите /start",
-        reply_markup=get_cdek_question_keyboard()
+        f"Добро пожаловать, {user_name}!\n\nОтветьте, пожалуйста, как часто Вы испытываете чувства, перечисленные ниже в опроснике.",
     )
 
 
@@ -176,40 +164,6 @@ async def restart(message: Message, state: FSMContext):
     await message.answer("Вы успешно вышли из сесси. Напишите любое сообщение, чтобы возобновить.", reply_markup=ReplyKeyboardRemove())
     await analyze_user_session(message.from_user.id)
     # await entry_point_handler(message, state)
-
-
-# ==== Обработчики (Callback) ====
-@dp.callback_query(F.data == "cdek_no")
-async def cdek_no_callback_handler(callback: CallbackQuery, state: FSMContext):
-    await create_db_user(callback.from_user.id, callback.from_user.full_name, state)
-    await state.set_state(UserStates.authenticated)
-    
-    # Убираем инлайн-кнопки
-    await callback.message.edit_text("Отлично! Вы зарегистрированы.")
-    await show_authenticated_menu(callback.message, callback.from_user.full_name)
-    await callback.answer()
-
-@dp.callback_query(F.data == "cdek_yes")
-async def cdek_yes_callback_handler(callback: CallbackQuery, state: FSMContext):
-    await state.set_state(UserStates.waiting_for_cdek_id)
-    await callback.message.edit_text("Пожалуйста, введите ваш CDEK ID:")
-    await callback.answer()
-
-
-# ==== Обработка ввода CDEK ID ====
-@dp.message(UserStates.waiting_for_cdek_id, F.text)
-async def process_cdek_id_handler(message: Message, state: FSMContext):
-    cdek_id_input = message.text
-
-    if await find_user_by_cdek_id(cdek_id=cdek_id_input):
-        await create_db_user(message.from_user.id, message.from_user.full_name, state, cdek_id_input)
-        await state.set_state(UserStates.authenticated)
-        await message.answer("Отлично, я нашел вас!")
-        await show_authenticated_menu(message, message.from_user.full_name)
-
-    else: 
-        await message.answer("Такого ID не сущетвует. Попробуйте ещё раз")
-    # return 
 
 
 
@@ -315,7 +269,8 @@ async def entry_point_handler(message: Message, state: FSMContext):
     else:
         # Пользователь не найден, запускаем регистрацию
         logger.info(f"Новый пользователь {message.from_user.id}, запуск регистрации.")
-        await ask_about_cdek_id(message)
+        await create_db_user(message.from_user.id, message.from_user.full_name, state)
+        # await ask_about_cdek_id(message)
 
 
 #  Функция, которую будет выполнять фоновый тайме

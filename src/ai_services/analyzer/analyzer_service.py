@@ -48,7 +48,7 @@ async def analyze_user_session(telegram_id: int) -> Dict[str, Any]:
             f"{msg['role']}: {msg['content']}" for msg in messages
         )
 
-        print('\n\nfull_dialogue_text: ', full_dialogue_text)
+        # print('\n\nfull_dialogue_text: ', full_dialogue_text)
 
     # 4. Передать текст в анализатор
     logger.info(f"Отправка текста сессии {session_id} на анализ в NLP сервис...")
@@ -70,7 +70,8 @@ async def analyze_user_session(telegram_id: int) -> Dict[str, Any]:
         return {
             "session_id": saved_analysis.session_id,
             "sentiment": saved_analysis.sentiment,
-            "is_burnout_risk_detected": saved_analysis.is_burnout_risk_detected
+            "is_burnout_risk_detected": saved_analysis.is_burnout_risk_detected,
+            "comment": saved_analysis.comment
         }
     
 if __name__ == "__main__":

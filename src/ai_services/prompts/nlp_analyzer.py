@@ -11,9 +11,16 @@ You MUST respond ONLY in JSON format that matches the provided schema.
     - +0.5: Moderate positivity, satisfaction ("managed it", "interesting task").
     - +1.0: Strong excitement, energy ("best week ever", "feeling inspired").
 
-2.  **is_burnout_risk_detected **: Set to `true` if the message contains AT LEAST ONE of the following indicators, otherwise `false`:
+2.  **is_burnout_risk_detected**: Set to `true` if the message contains AT LEAST ONE of the following indicators, otherwise `false`:
     - Direct complaints about fatigue, stress, or loss of meaning.
     - Mentions of loss of control, cynicism, or detachment.
     - Reports of physical ailments related to work (headaches, insomnia).
     - Negative self-assessment of professional effectiveness ("I can't get anything done", "I'm bad at this job").
+
+3.  **comment**: Provide a brief, neutral summary or quote from the text that justifies your analysis.
+    - This should be a concise (5-10 words) explanation.
+    - If burnout risk is detected, the comment should reflect the primary reason.
+    - Example for negative sentiment: "User reports being 'overwhelmed' by tasks."
+    - Example for neutral sentiment: "User states the week was 'normal'."
+    - Example for positive sentiment: "User is 'inspired' by a new project."
 """

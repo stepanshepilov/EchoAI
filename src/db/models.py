@@ -14,6 +14,19 @@ class Employee(Base):
 
     dialogue_sessions = relationship("DialogueSession", back_populates="employee", cascade="all, delete-orphan")
 
+    # survey_result = relationship(
+    #     "SurveyResult",
+    #     back_populates="employee",
+    #     uselist=False,
+    #     cascade="all, delete-orphan"
+    # )
+
+    # burnout_predictions = relationship(
+    #     "BurnoutPrediction",
+    #     back_populates="employee",
+    #     cascade="all, delete-orphan"
+    # )
+
     def __repr__(self):
         return f"<Employee(id={self.id}, telegram_id={self.telegram_id})>"
 
@@ -43,7 +56,7 @@ class DialogueAnalysis(Base):
     session_id = Column(String, ForeignKey('dialogue_sessions.id'), unique=True)
     sentiment = Column(Float)
     is_burnout_risk_detected = Column(Boolean)
-    comment = Column(String) 
+    comment = Column(String, nullable=True) 
     
     session = relationship("DialogueSession", back_populates="analysis")
 
@@ -58,3 +71,41 @@ class BurnoutPrediction(Base):
 
 
     employee = relationship("Employee", backref="burnout_predictions")
+
+
+class SurveyResult(Base):
+    __tablename__ = "survey_results"
+
+    id = Column(Integer, primary_key=True)
+
+    # связь с сотрудником
+    employee_id = Column(
+        Integer,
+        ForeignKey("employees.id"),
+        nullable=False,
+        unique=True, 
+        index=True
+    )
+
+    q1  = Column(String, nullable=True)
+    q2  = Column(String, nullable=True)
+    q3  = Column(String, nullable=True)
+    q4  = Column(String, nullable=True)
+    q5  = Column(String, nullable=True)
+    q6  = Column(String, nullable=True)
+    q7  = Column(String, nullable=True)
+    q8  = Column(String, nullable=True)
+    q9  = Column(String, nullable=True)
+    q10 = Column(String, nullable=True)
+    q11 = Column(String, nullable=True)
+    q12 = Column(String, nullable=True)
+    q13 = Column(String, nullable=True)
+    q14 = Column(String, nullable=True)
+    q15 = Column(String, nullable=True)
+    q16 = Column(String, nullable=True)
+    q17 = Column(String, nullable=True)
+    q18 = Column(String, nullable=True)
+    q19 = Column(String, nullable=True)
+    q20 = Column(String, nullable=True)
+    q21 = Column(String, nullable=True)
+    q22 = Column(String, nullable=True)

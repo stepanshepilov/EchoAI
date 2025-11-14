@@ -3,6 +3,7 @@
 import asyncio
 import websockets
 import logging
+import json
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -14,12 +15,17 @@ async def handler(websocket, path):
     logging.info(f"Новый клиент подключился: {client_address}")
     
     try:
-        # Бесконечно ждем сообщений от клиента (вашего бота)
-        async for message in websocket:
-            logging.info(f"<<< Получено сообщение от {client_address}: {message}")
-            
-            # Опционально: можно отправить ответ, чтобы проверить двустороннюю связь
-            # await websocket.send(f"Сервер получил ваше сообщение: {message}")
+        async for message_str in websocket:
+            # ### ИЗМЕНЕНИЯ ЗДЕСЬ ###
+            try:
+                # 2. Пытаемся превратить строку в объект Python (словарь)
+                data = json.loads(message_str)
+                # 3. Печатаем уже красивый, "расшифрованный" объект
+                logging.info(f"<<< Получено сообщение от {client_address}: {data}")
+                
+            except json.JSONDecodeError:
+                # Если пришла невалидная JSON-строка
+                logging.warning(f"Получена невалидная JSON-строка: {message_str}")
 
     except websockets.exceptions.ConnectionClosed as e:
         logging.warning(f"Клиент {client_address} отключился: {e}")

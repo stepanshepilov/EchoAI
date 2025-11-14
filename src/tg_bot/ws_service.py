@@ -1,4 +1,3 @@
-# Файл: src/services/ws_notifier.py
 import asyncio
 import websockets
 import logging
@@ -14,7 +13,6 @@ class WebSocketNotifier:
         self._connection = None
         self._is_running = False
         self._connection_task = None
-        # Убираем Event из __init__
 
     async def _connect_loop(self, startup_event: asyncio.Event):
         """
@@ -31,7 +29,6 @@ class WebSocketNotifier:
                     self._connection = websocket
                     logger.info("WebSocket соединение установлено!")
                     
-                    # ### ИСПРАВЛЕНО: Уведомляем о первом подключении ###
                     if is_first_connection:
                         startup_event.set()
                         is_first_connection = False
@@ -56,13 +53,11 @@ class WebSocketNotifier:
             
         logger.info("Запуск сервиса WebSocket уведомлений...")
         
-        # ### ИСПРАВЛЕНО: Создаем Event здесь и передаем его в задачу ###
         startup_event = asyncio.Event()
         
         self._connection_task = asyncio.create_task(self._connect_loop(startup_event))
         
         try:
-            # Ждем, пока _connect_loop не поднимет переданный ему флажок
             await asyncio.wait_for(startup_event.wait(), timeout=10.0)
             logger.info("Сервис WebSocket уведомлений запущен и успешно подключен.")
         except asyncio.TimeoutError:
@@ -86,7 +81,6 @@ class WebSocketNotifier:
         """
         if self._connection and self._connection.open:
             try:
-                # Конвертируем словарь в JSON-строку перед отправкой
                 await self._connection.send(json.dumps(data))
                 logger.info(f"Отправлено WebSocket сообщение: {data}")
             except websockets.exceptions.ConnectionClosed:

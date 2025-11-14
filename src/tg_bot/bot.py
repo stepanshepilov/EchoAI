@@ -213,14 +213,27 @@ async def process_cdek_id_handler(message: Message, state: FSMContext):
 
 
 # ==== Функционал для авторизованных пользователей ====
-async def get_ai_answer(message_text, state: FSMContext):
+async def get_ai_answer(message_text, telegram_id: int, state: FSMContext):
     user_data = await state.get_data()
     session_id = user_data.get(FSM_SESSION_ID_KEY)
 
     async with AsyncSessionLocal() as session:
         repo = SQLiteRepository(session)
         # Сохраняем сообщение пользователя
-        await repo.add_message(session_id=session_id, role="user", content=message_text)
+        # await repo.add_message(session_id=session_id, role="user", content=message_text)
+
+        user_message_obj = await repo.add_message(session_id=session_id, role="user", content=message_text)
+        await ws_notifier.send({
+            "user_id": telegram_id,
+            "event": "new_message",
+            "session_id": session_id,
+            "message": {
+                "role": user_message_obj.role,
+                "content": user_message_obj.content,
+                "timestamp": user_message_obj.timestamp.isoformat()
+            }
+        })
+
         # Получаем историю
         history_for_ai = await repo.get_conversation_history(session_id=session_id)
         print('history_for_ai' , history_for_ai)
@@ -244,7 +257,7 @@ async def get_ai_answer(message_text, state: FSMContext):
 async def handle_text_message(message: Message, state: FSMContext):
 
     await bot.send_chat_action(chat_id=message.chat.id, action=ChatAction.TYPING)
-    ai_response_text = await get_ai_answer(message.text, state)
+    ai_response_text = await get_ai_answer(message.text, message.chat.id, state)
     await message.answer(ai_response_text)
 
 
@@ -262,7 +275,7 @@ async def handle_voice(message: Message, state: FSMContext):
 
     if "text" in result:
         await bot.send_chat_action(chat_id=message.chat.id, action=ChatAction.TYPING)
-        ai_response_text = await get_ai_answer(result["text"], state)
+        ai_response_text = await get_ai_answer(result["text"], message.chat.id, state)
         await message.answer(ai_response_text)  
     else:
         await message.answer("Не удалось распознать речь 😔")

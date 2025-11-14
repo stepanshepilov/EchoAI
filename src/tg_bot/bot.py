@@ -7,7 +7,7 @@ import time
 
 from aiogram import Bot, Dispatcher, F
 from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove, BotCommand, InlineKeyboardButton, InlineKeyboardMarkup, CallbackQuery
-from aiogram.filters import CommandStart, StateFilter
+from aiogram.filters import CommandStart, StateFilter, Command
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.storage.memory import MemoryStorage
@@ -48,6 +48,29 @@ SESSION_TIMEOUT = 500
 # ==== Инициализация ====
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
+
+# === Константы === 
+FSM_SURVEY_ANSWERS_KEY = 'survey_answers'
+FSM_SURVEY_QUESTION_ORDER_KEY = 'survey_question_order'
+FSM_SURVEY_CURRENT_INDEX_KEY = 'survey_current_index'
+FSM_SURVEY_QUESTIONS_KEY = 'survey_questions'
+
+
+async def get_QUESTIONS(telegram_id: int) -> dict:
+    """
+    Имитирует запрос к внешней системе для получения персонализированного
+    набора вопросов для существующего пользователя.
+    Возвращает словарь формата {номер_вопроса: текст_вопроса}.
+    """
+    logger.info(f"Получение персонализированных вопросов для 'старого' пользователя {telegram_id}...")
+    # В реальной жизни здесь будет http-запрос к вашему API.
+    # Сейчас для примера вернем другой набор вопросов.
+    await asyncio.sleep(0.5) # Имитация сетевой задержки
+    return {
+        2: "Чувство усталости или упадка сил в течение дня?",
+        5: "Ощущение негативизма или цинизма, связанное с работой?",
+        13: "Трудности с концентрацией внимания на рабочих задачах?",
+    }
 
 
 # ==== ДЛЯ РАБОТЫ С БАЗАМИ ДАННЫХ ====
@@ -107,39 +130,14 @@ async def create_db_user(telegram_id: int, full_name: str, state: FSMContext, cd
     return None
 
 
-async def start_user_session(telegram_id: int, state: FSMContext):
-    """
-    Находит пользователя по telegram_id, создает для него новую сессию диалога в БД,
-    сохраняет session_id в FSM и возвращает объект Employee.
-    Если пользователь не найден, возвращает None.
-    """
-    async with AsyncSessionLocal() as session:
-        repo = SQLiteRepository(session)
-        # 1. Находим пользователя в нашей БД по его telegram_id
-        user = await repo.get_employee(telegram_id=telegram_id)
-        
-        if user:
-            # 2. Если нашли, создаем для него новую сессию диалога
-            new_db_session = await repo.start_new_session(employee_id=user.id) # <-- Используем user.id (PK)
-            
-            # 3. Сохраняем ID этой сессии в FSM для дальнейшего использования
-            await state.update_data({FSM_SESSION_ID_KEY: new_db_session.id})
-            logger.info(f"Для пользователя {telegram_id} (ID: {user.id}) стартовала сессия {new_db_session.id}")
-            
-            return user
-            
-    return None
-
-
-
 
 # === Клавиатуры ===
-def get_cdek_question_keyboard() -> InlineKeyboardMarkup:
-    """Возвращает инлайн-клавиатуру с вопросом про CDEK ID."""
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="✅ Да", callback_data="cdek_yes")],
-        [InlineKeyboardButton(text="❌ Нет", callback_data="cdek_no")]
-    ])
+# def get_cdek_question_keyboard() -> InlineKeyboardMarkup:
+#     """Возвращает инлайн-клавиатуру с вопросом про CDEK ID."""
+#     return InlineKeyboardMarkup(inline_keyboard=[
+#         [InlineKeyboardButton(text="✅ Да", callback_data="cdek_yes")],
+#         [InlineKeyboardButton(text="❌ Нет", callback_data="cdek_no")]
+#     ])
 
 
 # === Состояния ===
@@ -150,21 +148,154 @@ class UserStates(StatesGroup):
 
 
 # ==== Приветствия ====
-async def show_authenticated_menu(message: Message, user_name: str):
+async def show_authenticated_menu(message: Message, user_name: str, state: State):
     await message.answer(
-        f"Добро пожаловать, {user_name}!\n\nОтветьте, пожалуйста, как часто Вы испытываете чувства, перечисленные ниже в опроснике.",
+        f"Добро пожаловать, {user_name}!",
     )
+    await start_survey(message, state, is_new_user=False)
 
 
 # /start
-@dp.message(~StateFilter(None), CommandStart())
+@dp.message(CommandStart(), StateFilter('*'))
+@dp.message(StateFilter(None))
 async def restart(message: Message, state: FSMContext):
     await state.clear()
+    if await state.get_state() is not None:        
+        logger.info(f'Пользователь {message.from_user.id} вышел из системы')
+        await analyze_user_session(message.from_user.id)
+    await entry_point_handler(message, state)
+
+
+# /finish
+@dp.message(Command("finish"), ~StateFilter(None))
+async def logout(message: Message, state: FSMContext):
+    await state.clear()
     logger.info(f'Пользователь {message.from_user.id} вышел из системы')
-    await message.answer("Вы успешно вышли из сесси. Напишите любое сообщение, чтобы возобновить.", reply_markup=ReplyKeyboardRemove())
+    await message.answer("Сессия завершена. Нажмите /start, чтобы начать новую", reply_markup=ReplyKeyboardRemove())
     await analyze_user_session(message.from_user.id)
     # await entry_point_handler(message, state)
 
+
+
+# ==== ЛОГИКА ОПРОСА ====
+async def start_survey(message: Message, state: FSMContext, is_new_user: bool = False):
+    """
+    Инициирует процесс опроса.
+    """
+    await state.set_state(UserStates.in_survey)
+    
+    # --- Определяем, какой набор вопросов использовать ---
+    if is_new_user:
+        logger.info(f"Запуск стандартного опроса для нового пользователя {message.chat.id}")
+        questions_to_ask = QUESTIONS # Берем стандартный набор из файла
+    else:
+        # Для старого пользователя получаем персонализированный набор
+        questions_to_ask = await get_QUESTIONS(telegram_id=message.chat.id)
+
+    if not questions_to_ask:
+        logger.warning(f"Для пользователя {message.chat.id} не найдено вопросов для опроса. Завершение.")
+        await state.set_state(UserStates.authenticated)
+        await message.answer("На данный момент для вас нет доступных опросов. Попробуйте позже.")
+        return
+
+    question_order = list(questions_to_ask.keys())
+    
+    # Сохраняем в FSM всё необходимое, включая сам словарь с вопросами
+    await state.update_data({
+        FSM_SURVEY_QUESTIONS_KEY: questions_to_ask, # <-- СОХРАНЯЕМ ВОПРОСЫ
+        FSM_SURVEY_ANSWERS_KEY: {},
+        FSM_SURVEY_QUESTION_ORDER_KEY: question_order,
+        FSM_SURVEY_CURRENT_INDEX_KEY: 0
+    })
+    
+    await message.answer(
+        text='Ответьте, пожалуйста, как часто Вы испытываете чувства, перечисленные ниже:',
+        reply_markup=ReplyKeyboardRemove()
+    )
+    
+    await send_question(message, state)
+
+
+# ### ИЗМЕНЕНО: send_question теперь берет вопросы из FSM ###
+async def send_question(message: Message, state: FSMContext):
+    """
+    Формирует и отправляет текущий вопрос опроса.
+    """
+    user_data = await state.get_data()
+    questions_data = user_data.get(FSM_SURVEY_QUESTIONS_KEY, {}) # <-- ПОЛУЧАЕМ ВОПРОСЫ ИЗ FSM
+    q_order = user_data.get(FSM_SURVEY_QUESTION_ORDER_KEY, [])
+    q_index = user_data.get(FSM_SURVEY_CURRENT_INDEX_KEY, 0)
+    
+    if q_index >= len(q_order): return
+
+    question_number = q_order[q_index]
+    # Берем текст вопроса из словаря, который сохранили в FSM
+    question_text = questions_data.get(question_number, "Текст вопроса не найден.")
+    
+    buttons = [InlineKeyboardButton(text=text, callback_data=f"survey_{key}") for key, text in ANSWER_OPTIONS.items()]
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[buttons[i:i+2] for i in range(0, len(buttons), 2)])
+    
+    await message.answer(
+        f"Вопрос {q_index + 1}/{len(q_order)}:\n\n**{question_text}**",
+        reply_markup=keyboard, parse_mode="Markdown"
+    )
+
+@dp.callback_query(UserStates.in_survey, F.data.startswith("survey_"))
+async def survey_answer_handler(callback: CallbackQuery, state: FSMContext, bot: Bot):
+    """
+    Обрабатывает нажатие на кнопку с ответом.
+    """
+    await callback.answer() # Убираем "часики" с кнопки
+    
+    # 1. Извлекаем ответ пользователя из данных кнопки (например, "often")
+    user_answer = callback.data.split("_")[1]
+    
+    # 2. Получаем "карточку опроса"
+    user_data = await state.get_data()
+    answers = user_data[FSM_SURVEY_ANSWERS_KEY]
+    q_order = user_data[FSM_SURVEY_QUESTION_ORDER_KEY]
+    q_index = user_data[FSM_SURVEY_CURRENT_INDEX_KEY]
+    question_number = q_order[q_index]
+    
+    # 3. Записываем ответ в словарь
+    answers[question_number] = user_answer
+    
+    # 4. Передвигаем указатель на следующий вопрос
+    next_index = q_index + 1
+    await state.update_data({
+        FSM_SURVEY_ANSWERS_KEY: answers,
+        FSM_SURVEY_CURRENT_INDEX_KEY: next_index
+    })
+    
+    # 5. Удаляем предыдущее сообщение с вопросом, чтобы чат был чистым
+    await callback.message.delete()
+    
+    # 6. Проверяем, закончился ли опрос
+    if next_index < len(q_order):
+        # Если нет - отправляем следующий вопрос
+        await send_question(callback.message, state)
+    else:
+        # Если да - завершаем опрос
+        logger.info(f"Пользователь {callback.from_user.id} завершил опрос. Ответы: {answers}")
+        await state.set_state(UserStates.authenticated) # Возвращаем в обычное состояние
+        # await set_authenticated_commands(bot) # Устанавливаем полное меню команд
+        await callback.message.answer(
+            "Спасибо за ваши ответы! Опрос завершен.\n"
+            "Используйте команду /dialogue, чтобы начать общение."
+        )
+        # TODO: Здесь можно запустить асинхронную задачу для анализа ответов
+        # asyncio.create_task(analyze_survey_results(answers))
+
+
+@dp.message(UserStates.in_survey, F.text)
+async def wrong_text_in_menu_handler(message: Message):
+    """
+    Ловит любой текст, который не был пойман предыдущими хэндлерами,
+    когда пользователь находится в главном меню (после опроса).
+    """
+    await message.answer(
+        "Пожалуйста, используйте команды из меню или кнопки ниже, чтобы продолжить.",
+    )
 
 
 # ==== Функционал для авторизованных пользователей ====
@@ -236,12 +367,6 @@ async def handle_voice(message: Message, state: FSMContext):
 
 
 
-# ==== Запуск ====
-async def set_main_menu(bot: Bot):
-    main_menu_commands = [BotCommand(command='/start', description='Перезапустить бота / Главное меню 🔥')]
-    # проброс по websoscket строки {'user_id': id, 'event': 'session_started'}
-    await bot.set_my_commands(main_menu_commands)
-
 
 
 # Ловит /start и ЛЮБОЕ другое сообщение от пользователя без состояния
@@ -257,10 +382,12 @@ async def entry_point_handler(message: Message, state: FSMContext):
         # Пользователь найден (уже зарегистрирован)
         logger.info(f"Вход для пользователя {user['user_id']}")
         await state.set_state(UserStates.authenticated)
+        # await start_survey(message, state, is_new_user=False)
+
         
         # Если это было /start, показываем приветствие
         if message.text == '/start':
-            await show_authenticated_menu(message, user["name"])
+            await show_authenticated_menu(message, user["name"], state)
         elif message.voice:
             await handle_voice(message, state)
         elif message.text:
@@ -270,6 +397,8 @@ async def entry_point_handler(message: Message, state: FSMContext):
         # Пользователь не найден, запускаем регистрацию
         logger.info(f"Новый пользователь {message.from_user.id}, запуск регистрации.")
         await create_db_user(message.from_user.id, message.from_user.full_name, state)
+        await start_survey(message, state, is_new_user=True)
+
         # await ask_about_cdek_id(message)
 
 
@@ -334,9 +463,21 @@ class SessionTimeoutMiddleware(BaseMiddleware):
         # 3. Передаем управление дальше, чтобы обработать сообщение
         return await handler(event, data)
         
+	
 
-
-   
+# ==== Запуск ====
+async def set_main_menu(bot: Bot):
+    main_menu_commands = [
+        BotCommand(
+            command='/start', 
+            description='Начать / Перезапустить 🔥'
+        ),
+        BotCommand(
+            command='/finish', 
+            description='Завершить сессию 🔚'
+        )
+    ]
+    await bot.set_my_commands(main_menu_commands)
 
 async def main():
     dp.message.middleware(SessionTimeoutMiddleware())

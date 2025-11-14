@@ -1,5 +1,3 @@
-# Файл: test_ws_server.py
-
 import asyncio
 import websockets
 import logging
@@ -16,15 +14,11 @@ async def handler(websocket, path):
     
     try:
         async for message_str in websocket:
-            # ### ИЗМЕНЕНИЯ ЗДЕСЬ ###
             try:
-                # 2. Пытаемся превратить строку в объект Python (словарь)
                 data = json.loads(message_str)
-                # 3. Печатаем уже красивый, "расшифрованный" объект
                 logging.info(f"<<< Получено сообщение от {client_address}: {data}")
                 
             except json.JSONDecodeError:
-                # Если пришла невалидная JSON-строка
                 logging.warning(f"Получена невалидная JSON-строка: {message_str}")
 
     except websockets.exceptions.ConnectionClosed as e:
@@ -39,13 +33,11 @@ async def main():
     host = "127.0.0.1"
     port = 8000
     
-    # Запускаем WebSocket сервер
     async with websockets.serve(handler, host, port):
         logging.info(f"Тестовый WebSocket сервер запущен на ws://{host}:{port}")
         logging.info("Ожидание подключений от бота...")
         logging.info("Нажмите Ctrl+C для остановки.")
         
-        # Сервер будет работать вечно, пока его не прервут
         await asyncio.Future()
 
 if __name__ == "__main__":

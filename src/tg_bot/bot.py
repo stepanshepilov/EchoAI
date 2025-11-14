@@ -27,7 +27,7 @@ from src.settings import settings
 from src.db.repo import SQLiteRepository
 from src.db.session import AsyncSessionLocal
 from src.tg_bot.ws_service import ws_notifier 
-
+from src.ai_services.analyzer.analyzer_service import analyze_user_session
 
 # ==== Настройки ====
 AI = ChatLM()
@@ -163,7 +163,7 @@ async def show_authenticated_menu(message: Message, user_name: str):
 
 async def ask_about_cdek_id(message: Message):
     await message.answer(
-        "Я не нашел вас в своей базе.\n\nЕсть ли у вас CDEK ID?",
+        "Я не нашел вас в своей базе.\n\nЕсть ли у вас CDEK ID? \n\nИли нажмите /start",
         reply_markup=get_cdek_question_keyboard()
     )
 
@@ -173,8 +173,9 @@ async def ask_about_cdek_id(message: Message):
 async def restart(message: Message, state: FSMContext):
     await state.clear()
     logger.info(f'Пользователь {message.from_user.id} вышел из системы')
-    await message.answer("Вы успешно вышли из сесси.", reply_markup=ReplyKeyboardRemove())
-    await entry_point_handler(message, state)
+    await message.answer("Вы успешно вышли из сесси. Напишите любое сообщение, чтобы возобновить.", reply_markup=ReplyKeyboardRemove())
+    await analyze_user_session(message.from_user.id)
+    # await entry_point_handler(message, state)
 
 
 # ==== Обработчики (Callback) ====
@@ -220,7 +221,6 @@ async def get_ai_answer(message_text, telegram_id: int, state: FSMContext):
     async with AsyncSessionLocal() as session:
         repo = SQLiteRepository(session)
         # Сохраняем сообщение пользователя
-        # await repo.add_message(session_id=session_id, role="user", content=message_text)
 
         user_message_obj = await repo.add_message(session_id=session_id, role="user", content=message_text)
         await ws_notifier.send({

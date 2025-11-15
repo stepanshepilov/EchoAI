@@ -5,61 +5,105 @@ import { Canvas } from '@react-three/fiber';
 import { useNavigate } from 'react-router-dom';
 import { AvatarModel } from '../components/AvatarModel';
 import { CameraController } from '../components/CameraController';
-import { EmployeeCard, Employee } from '../components/EmployeeCard';
+import { EmployeeCard } from '../components/EmployeeCard';
 import { EmployeeSelector } from '../components/EmployeeSelector';
+import { getTeamPulse } from '../services/api';
+import { useWebSocket } from '../hooks/useWebSocket';
+import * as Tone from 'tone';
 
-const employeesMock: Employee[] = [
-  { id: '001', name: 'Иванов И.', risk: 0.1 },
-  { id: '002', name: 'Петрова А.', risk: 0.35 },
-  { id: '003', name: 'Сидоров К.', risk: 0.52 },
-  { id: '004', name: 'Кузнецова М.', risk: 0.76 },
-  { id: '005', name: 'Васильев П.', risk: 0.91 },
-];
+export interface Employee {
+  id: string;
+  token: string;
+  name: string;
+  risk: number;
+}
+
+const StatusScreen = styled.div`
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 100vw;
+  height: 100vh;
+  font-family: 'Segoe UI', sans-serif;
+  font-size: 24px;
+  color: #555;
+  background-color: #fff;
+`;
 
 export default function Home() {
   const navigate = useNavigate();
 
   const [employees, setEmployees] = useState<Employee[]>([]);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedToken, setSelectedToken] = useState<string | null>(null);
+  const [isSessionActive, setIsSessionActive] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
   const [selectorVisible, setSelectorVisible] = useState(false);
-  const [focusTarget, setFocusTarget] = useState<THREE.Vector3 | null>(null);
-  const [modelCenter, setModelCenter] = useState<THREE.Vector3 | null>(null);
   const [teamMood, setTeamMood] = useState<null | ReturnType<typeof calcTeamMood>>(null);
-  const [justFocused, setJustFocused] = useState(false);
-  const focusTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const [isZoomedIn, setIsZoomedIn] = useState(false);
+  const cameraInitializedRef = useRef(false);
 
   const selectedEmployee = useMemo(
-    () => employees.find(e => e.id === selectedId),
-    [selectedId, employees]
+    () => employees.find((e) => e.token === selectedToken),
+    [selectedToken, employees]
   );
 
-  useEffect(() => setEmployees(employeesMock), []);
+  useEffect(() => {
+    const fetchTeamData = async () => {
+      try {
+        setIsLoading(true);
+        const data = await getTeamPulse();
+        const formattedEmployees: Employee[] = data.employees.map((emp, index) => ({
+          id: emp.token,
+          token: emp.token,
+          risk: emp.risk_probability,
+          name: `Сотрудник #${index + 1}`,
+        }));
+        setEmployees(formattedEmployees);
+        setError(null);
+      } catch (e: any) {
+        setError(e.message || 'Не удалось загрузить данные о команде.');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchTeamData();
+  }, []);
+
+  useWebSocket('ws://localhost:8000/api/v1/ws/dashboard', {
+    onOpen: () => setIsSessionActive(true),
+    onClose: () => setIsSessionActive(false),
+    onMessage: (data) => {
+      if (data.event_type === 'EMPLOYEE_RISK_UPDATED') {
+        const { token, new_risk_probability } = data.payload;
+        setEmployees((prev) =>
+          prev.map((emp) =>
+            emp.token === token ? { ...emp, risk: new_risk_probability } : emp
+          )
+        );
+      }
+    },
+    onError: () => setIsSessionActive(false),
+  });
 
   const handleAvatarClick = () => {
-    if (modelCenter) {
-      const adjusted = modelCenter.clone();
-      adjusted.y += 1.2;
-      adjusted.z += 3.2;
-      setFocusTarget(adjusted);
-      setJustFocused(true);
-
-      if (focusTimeoutRef.current) clearTimeout(focusTimeoutRef.current);
-      focusTimeoutRef.current = setTimeout(() => setJustFocused(false), 700);
-      setTimeout(() => setSelectorVisible(true), 600);
-    }
+    if (!cameraInitializedRef.current) return;
+    setIsZoomedIn(true);
+    setSelectorVisible(true);
   };
 
   const handlePointerMissed = () => {
-    if (justFocused) return;
-    setFocusTarget(null);
-    setSelectedId(null);
     setSelectorVisible(false);
+    setSelectedToken(null);
+    setIsZoomedIn(false);
   };
 
-  const handleSelect = (id: string) => {
-    setSelectedId(id);
+  const handleSelect = (token: string) => {
+    setSelectedToken(token);
     setSelectorVisible(false);
-    const emp = employees.find((e) => e.id === id);
+    const emp = employees.find((e) => e.token === token);
     if (emp) playBellSound(emp.risk);
   };
 
@@ -79,7 +123,17 @@ export default function Home() {
   }, [selectedEmployee]);
 
   const calcTeamMood = (team: Employee[]) => {
+    if (team.length === 0) {
+      return {
+        color: '#ccc',
+        msg: 'Нет данных о команде',
+        file: 'calm.mp3',
+        risk: 0,
+      };
+    }
+
     const avg = team.reduce((s, e) => s + e.risk, 0) / team.length;
+
     if (avg < 0.35)
       return { color: '#2ecc71', msg: 'Команда в хорошем настроении 🌿', file: 'calm.mp3', risk: avg };
     if (avg < 0.7)
@@ -87,48 +141,100 @@ export default function Home() {
     return { color: '#e74c3c', msg: 'Команда под серьёзным давлением ❗️', file: 'tense.mp3', risk: avg };
   };
 
-  const playTeamMoodMelody = () => {
+  const playTeamMoodMelody = async () => {
     const mood = calcTeamMood(employees);
     setTeamMood(mood);
-    const audio = new Audio(`/music/${mood.file}`);
-    audio.play().catch(console.warn);
-    setTimeout(() => setTeamMood(null), 12000);
+
+    await Tone.start();
+
+    const minFreq = 130;
+    const maxFreq = 700;
+    const freq = minFreq + (maxFreq - minFreq) * mood.risk;
+
+    const synth = new Tone.Synth({
+      oscillator: {
+        type: 'sine',
+      },
+      envelope: {
+        attack: 2,
+        decay: 1.5,
+        sustain: 0.7,
+        release: 4,
+      },
+    });
+
+    // 🎛 Реверберация
+    const reverb = new Tone.Reverb({
+      decay: 5,
+      wet: 0.7,
+    }).toDestination();
+
+    await reverb.generate(); // ждать генерации reverb
+
+    synth.connect(reverb);
+
+    // 🎹 Воспроизводим звук
+    synth.triggerAttackRelease(freq, '8n');
+
+    // ⏱ Убрать баннер чуть позже окончания звучания
+    setTimeout(() => setTeamMood(null), 6000);
   };
+
+  if (isLoading) return <StatusScreen>Загрузка данных...</StatusScreen>;
+  if (error) return <StatusScreen>Ошибка: {error}</StatusScreen>;
 
   return (
     <AppWrapper>
       <Logo>EchoAI</Logo>
-      <NavBtn onClick={() => navigate('/dashboard')}>
-        📊 Перейти в дашборд
-      </NavBtn>
+      <NavBtn onClick={() => navigate('/dashboard')}>📊 Перейти в дашборд</NavBtn>
 
       <CanvasContainer>
-        <Canvas
-          camera={{ position: [0, 3, 8], fov: 45 }}
-          onPointerMissed={handlePointerMissed}
-        >
-          <ambientLight intensity={0.6} />
-          <pointLight position={[5, 10, 5]} intensity={1.4} />
-          <CameraController focusTarget={focusTarget} />
+        <Canvas shadows camera={{ position: [0, 3, 8], fov: 45 }} onPointerMissed={handlePointerMissed}>
+          <ambientLight intensity={0.4} />
+          <directionalLight
+            castShadow
+            position={[5, 10, 5]}
+            intensity={0.8}
+            shadow-mapSize-width={1024}
+            shadow-mapSize-height={1024}
+          />
+
+          <CameraController zoomIn={isZoomedIn} />
+
+          {/* model */}
           <AvatarModel
             color={modelColor}
             onClick={handleAvatarClick}
-            onCenterComputed={(center) => setModelCenter(center)}
+            onCenterComputed={() => {
+              cameraInitializedRef.current = true;
+            }}
+            isSessionActive={isSessionActive}
           />
+
+          {/* пол */}
+          <mesh receiveShadow rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]}>
+            <planeGeometry args={[30, 30]} />
+            <shadowMaterial opacity={0.2} />
+          </mesh>
         </Canvas>
       </CanvasContainer>
 
       {selectorVisible && (
         <Modal visible={selectorVisible}>
-        <h3 style={{ color: '#222' }}>Выбери сотрудника:</h3>
-        <EmployeeSelector employees={employees} onSelect={handleSelect} />
-      </Modal>
-    )}
+          <h3 style={{ color: '#222' }}>Выбери сотрудника:</h3>
+          <EmployeeSelector employees={employees} onSelect={handleSelect} />
+        </Modal>
+      )}
 
       {selectedEmployee && !selectorVisible && (
-        <RightPanel visible={selectedEmployee && !selectorVisible}>
-        {selectedEmployee && <EmployeeCard employee={selectedEmployee} />}
-      </RightPanel>
+        <RightPanel visible={!!selectedEmployee && !selectorVisible}>
+          <EmployeeCard
+            employee={selectedEmployee}
+            onDetailsClick={() =>
+              navigate(`/dashboard/employee/${selectedEmployee.token}`)
+            }
+          />
+        </RightPanel>
       )}
 
       <PlayButton onClick={playTeamMoodMelody}>🎶 Мелодия команды</PlayButton>
@@ -136,7 +242,9 @@ export default function Home() {
       {teamMood && (
         <MoodBanner style={{ backgroundColor: teamMood.color }}>
           <h3>{teamMood.msg}</h3>
-          <p>Средний риск: <strong>{Math.round(teamMood.risk * 100)}%</strong></p>
+          <p>
+            Средний риск: <strong>{Math.round(teamMood.risk * 100)}%</strong>
+          </p>
         </MoodBanner>
       )}
     </AppWrapper>
@@ -181,7 +289,8 @@ const NavBtn = styled.button`
 
 const CanvasContainer = styled.div`
   position: absolute;
-  top: 0; left: 0;
+  top: 0;
+  left: 0;
   width: 100%;
   height: 100%;
   z-index: 1;
@@ -195,13 +304,13 @@ const fadeIn = keyframes`
 
 const Modal = styled.div<{ visible: boolean }>`
   position: absolute;
-  top: 50%;
-  left: 50%;
+  top: 56%;
+  left: 68%;
   transform: translate(-50%, -50%);
   background: white;
   padding: 30px;
   border-radius: 14px;
-  box-shadow: 0 10px 30px rgba(0,0,0,0.25);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
   z-index: 5;
 
   opacity: ${({ visible }) => (visible ? 1 : 0)};
@@ -242,14 +351,19 @@ const PlayButton = styled.button`
 const MoodBanner = styled.div`
   position: fixed;
   bottom: 30px;
-  left: 50%;
-  transform: translateX(-50%);
+  left: 0;
+  right: 0;
+  margin: 0 auto;
+  width: fit-content;
+
   padding: 18px 24px;
   border-radius: 16px;
   color: white;
   text-align: center;
-  animation: ${fadeIn} 0.5s ease-out;
   font-size: 16px;
-  box-shadow: 0 10px 30px rgba(0,0,0,0.25);
   z-index: 20;
+
+  background: #000; // будет переопределяться через style={{ backgroundColor }}
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+  animation: ${fadeIn} 0.5s ease-out;
 `;

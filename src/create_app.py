@@ -2,6 +2,7 @@ import os
 import logging
 from fastapi import FastAPI, APIRouter
 from contextlib import asynccontextmanager
+from fastapi.middleware.cors import CORSMiddleware
 from .core.log import setup_logging
 from .settings import settings
 from .db.session import engine
@@ -36,5 +37,13 @@ def create_app() -> FastAPI:
     api_router.include_router(router, tags=["Transcription"])
 
     app.include_router(api_router)
+
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["http://localhost:5173"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
     
     return app

@@ -2,6 +2,7 @@ from ..settings import settings
 from typing import List, Dict
 from .client import get_openai_client
 from .prompts.bot_prompts import BURNOUT_DIAGNOSTIC_SYSTEM_PROMPT
+from .prompts.test_analyzer_prompt import SYSTEM_PROMPT_TEST, USER_PROMPT_TEST
 
 class BaseLM:
     def __init__(self):
@@ -56,3 +57,18 @@ class ChatLM(BaseLM):
         )
         
         return ai_response
+
+
+class TestAnalzyer(BaseLM):
+    def __init__(self):
+        super().__init__()
+        self.system_prompt = SYSTEM_PROMPT_TEST
+        self.user_prompt = USER_PROMPT_TEST
+    
+    async def analyze(self, test_results: str) -> str:
+        messages = [
+            {"role": "system", "content": self.system_prompt},
+            {"role": "user", "content": self.user_prompt.format(test_result=test_results)}
+        ]
+
+        return await super().chat_completion(messages=messages, temperature=0)

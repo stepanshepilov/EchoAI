@@ -83,8 +83,8 @@ class AiHelper(BaseLM):
     
     async def help(self, team_pulse: dict, topics: List[str]) -> str:
         messages = [
-            {"system": self.system_prompt},
-            {"user": self.user_prompt.format(statistics_json=team_pulse, frequent_topics=topics)}
+            {"role": "system", "content": self.system_prompt},
+            {"role": "user", "content": self.user_prompt.format(statistics_json=team_pulse, frequent_topics=topics)}
         ]
 
         return await super().chat_completion(messages=messages, temperature=1)

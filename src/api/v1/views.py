@@ -7,11 +7,13 @@ import json
 from fastapi import APIRouter, HTTPException, Query, Depends, WebSocket, WebSocketDisconnect
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc
+from collections import Counter
 from src.db.models import BurnoutPrediction, EmployeeFeatures, Employee, DialogueAnalysis, DialogueSession
 from src.db.session import get_db
 
 from .models import TeamPulseResponse, EmployeePulse, ExplanationResponse
 from src.ai_services.prediction_service import prediction_service
+from src.ai_services.base import AiHelper
 from src.db.repo import SQLiteRepository
 
 # Раскомментировать, когда FeatureService будет реализован
@@ -315,3 +317,85 @@ async def get_what_if_vacation_prediction(
         logger.error(f"Ошибка при выполнении 'что если' предсказания для telegram_id {telegram_id}: {e}", exc_info=True)
         raise HTTPException(status_code=503,
                             detail=f"Сервис предсказаний недоступен или произошла внутренняя ошибка: {e}")
+
+
+@router.get("/llm_helper", summary="AI-помощник для анализа команды")
+async def get_llm_recommendation(db: AsyncSession = Depends(get_db)):
+    """
+    Собирает общую статистику по команде и самые частые темы для обсуждения,
+    отправляет их AI-помощнику и возвращает его рекомендации.
+    """
+    logger.info("Запуск AI-помощника")
+    repo = SQLiteRepository(db)
+    try:
+        # --- ШАГ 1: Получаем данные, аналогичные TeamPulse ---
+        all_employees = await repo.get_all_employees()
+        if not all_employees:
+            raise HTTPException(status_code=404, detail="Сотрудники не найдены.")
+
+        total_risk_score = 0
+        risk_distribution = {"low": 0, "medium": 0, "high": 0}
+        processed_employees_count = 0
+
+        for employee in all_employees:
+            latest_features = await repo.get_latest_features(employee.id)
+            if not latest_features:
+                continue
+
+            features = features_to_dataframe(latest_features)
+            if features.empty:
+                continue
+
+            probability = await prediction_service.predict_proba(features)
+            processed_employees_count += 1
+            total_risk_score += probability
+            if probability < 0.4:
+                risk_distribution["low"] += 1
+            elif probability < 0.7:
+                risk_distribution["medium"] += 1
+            else:
+                risk_distribution["high"] += 1
+
+        overall_score = total_risk_score / processed_employees_count if processed_employees_count > 0 else 0
+
+        # Собираем статистику в словарь
+        team_pulse_data = {
+            "overall_risk_score": overall_score,
+            "risk_distribution": risk_distribution,
+            "processed_employees_count": processed_employees_count,
+        }
+
+        # --- ШАГ 2: Получаем и обрабатываем топики (комментарии) ---
+        all_comments = await repo.get_all_latest_analysis_comments()
+
+        # Убираем пустые комментарии и считаем самые частые
+        valid_comments = [comment for comment in all_comments if comment and comment.strip()]
+
+        if not valid_comments:
+            top_topics = []
+        else:
+            topic_counts = Counter(valid_comments)
+            # most_common возвращает список кортежей ('тема', количество)
+            top_topics_with_counts = topic_counts.most_common(7)
+            # Нам нужны только сами темы (строки)
+            top_topics = [topic for topic, count in top_topics_with_counts]
+
+        # --- ШАГ 3: Вызываем AI-помощника ---
+        logger.info(f"Отправка данных AI-помощнику. Статистика: {team_pulse_data}, Топики: {top_topics}")
+        ai_helper = AiHelper()
+
+        # Форматируем данные для промпта
+        team_pulse_json = json.dumps(team_pulse_data, indent=2, ensure_ascii=False)
+
+        # Получаем рекомендацию от LLM
+        ai_recommendation = await ai_helper.help(
+            team_pulse=team_pulse_json,
+            topics=top_topics
+        )
+
+        # --- ШАГ 4: Возвращаем ответ ---
+        return {"recommendation": ai_recommendation}
+
+    except Exception as e:
+        logger.error(f"Ошибка при работе AI-помощника: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Внутренняя ошибка сервера при получении рекомендации от AI.")

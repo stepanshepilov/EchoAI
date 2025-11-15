@@ -256,3 +256,32 @@ class SQLiteRepository(BaseRepository):
         )
         average_sentiment = result.scalar_one_or_none()
         return average_sentiment
+
+    async def get_all_latest_analysis_comments(self) -> List[str]:
+        """
+        Получает самый свежий комментарий из DialogueAnalysis для КАЖДОГО сотрудника.
+        Использует оконную функцию для эффективности.
+        """
+        logger.info("Получение всех последних комментариев анализа для всех сотрудников")
+
+        # Подзапрос, который ранжирует сессии каждого сотрудника по дате (самые новые получают ранг 1)
+        subquery = (
+            select(
+                DialogueAnalysis.comment,
+                func.row_number()
+                .over(
+                    partition_by=DialogueSession.employee_id,
+                    order_by=desc(DialogueSession.created_at),
+                )
+                .label("rn"),
+            )
+            .join(DialogueSession, DialogueAnalysis.session_id == DialogueSession.id)
+            .subquery()
+        )
+
+        # Основной запрос, который выбирает только те комментарии, где ранг равен 1
+        query = select(subquery.c.comment).where(subquery.c.rn == 1)
+
+        result = await self.session.execute(query)
+        # Возвращаем список комментариев (строк)
+        return list(result.scalars().all())

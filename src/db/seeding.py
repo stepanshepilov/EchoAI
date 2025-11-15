@@ -5,7 +5,7 @@ import logging
 from datetime import datetime, timedelta
 from sqlalchemy.ext.asyncio import create_async_engine
 from src.settings import settings
-from src.db.models import Base, Employee, DialogueSession, ChatMessage, DialogueAnalysis, BurnoutPrediction, SurveyResult
+from src.db.models import Base, Employee, DialogueSession, ChatMessage, DialogueAnalysis, BurnoutPrediction, SurveyResult, EmployeeFeatures
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -15,6 +15,54 @@ MOCK_EMPLOYEES = [
     {"id": 2, "telegram_id": 222222222, 'name': 'Чувак 2', 'cdek_id': '334'},
     {"id": 3, "telegram_id": 333333333, 'name': 'Чувак 3', 'cdek_id': '445'},
 ]
+
+MOCK_FEATURES = [
+    {
+        'employee_id': 1, 'age': 32, 'gender': 1, 'tenure_months': 24,
+        'tasks_completed_last_30d': 50, 'tasks_failed_last_30d': 2,
+        'tasks_completed_last_90d': 150, 'tasks_failed_last_90d': 5,
+        'tasks_completed_last_365d': 600, 'tasks_failed_last_365d': 20,
+        'sick_leave_count_last_30d': 0, 'short_sick_leaves_count_last_30d': 0, 'total_sick_days_last_30d': 0,
+        'sick_leave_count_last_90d': 1, 'short_sick_leaves_count_last_90d': 1, 'total_sick_days_last_90d': 3,
+        'sick_leave_count_last_365d': 2, 'short_sick_leaves_count_last_365d': 1, 'total_sick_days_last_365d': 10,
+        'days_since_last_vacation': 120,
+        'avg_sentiment_last_30d': 0.1, 'avg_sentiment_last_90d': 0.15, 'avg_sentiment_last_365d': 0.2,
+        'sentiment_trend_last_90d': 0.05
+    },
+    {
+        'employee_id': 2, 'age': 28, 'gender': 0, 'tenure_months': 12,
+        'tasks_completed_last_30d': 70, 'tasks_failed_last_30d': 8,
+        'tasks_completed_last_90d': 210, 'tasks_failed_last_90d': 20,
+        'tasks_completed_last_365d': 800, 'tasks_failed_last_365d': 50,
+        'sick_leave_count_last_30d': 1, 'short_sick_leaves_count_last_30d': 1, 'total_sick_days_last_30d': 2,
+        'sick_leave_count_last_90d': 2, 'short_sick_leaves_count_last_90d': 2, 'total_sick_days_last_90d': 5,
+        'sick_leave_count_last_365d': 4, 'short_sick_leaves_count_last_365d': 3, 'total_sick_days_last_365d': 15,
+        'days_since_last_vacation': 280,
+        'avg_sentiment_last_30d': -0.6, 'avg_sentiment_last_90d': -0.4, 'avg_sentiment_last_365d': -0.1,
+        'sentiment_trend_last_90d': -0.2
+    },
+    {
+        'employee_id': 3, 'age': 45, 'gender': 1, 'tenure_months': 120,
+        'tasks_completed_last_30d': 30, 'tasks_failed_last_30d': 0,
+        'tasks_completed_last_90d': 90, 'tasks_failed_last_90d': 1,
+        'tasks_completed_last_365d': 350, 'tasks_failed_last_365d': 5,
+        'sick_leave_count_last_30d': 0, 'short_sick_leaves_count_last_30d': 0, 'total_sick_days_last_30d': 0,
+        'sick_leave_count_last_90d': 0, 'short_sick_leaves_count_last_90d': 0, 'total_sick_days_last_90d': 0,
+        'sick_leave_count_last_365d': 1, 'short_sick_leaves_count_last_365d': 0, 'total_sick_days_last_365d': 7,
+        'days_since_last_vacation': 30,
+        'avg_sentiment_last_30d': 0.5, 'avg_sentiment_last_90d': 0.4, 'avg_sentiment_last_365d': 0.3,
+        'sentiment_trend_last_90d': 0.1
+    }
+]
+
+# Для краткости, заполним все ответы одинаковыми значениями
+SURVEY_ANSWERS = {f'q{i}': 'Никогда' for i in range(1, 23)}
+MOCK_SURVEYS = [
+    {'employee_id': 1, **SURVEY_ANSWERS, 'q1': 'Очень часто', 'q5': 'Часто'},
+    {'employee_id': 2, **SURVEY_ANSWERS, 'q2': 'Иногда', 'q8': 'Редко'},
+    {'employee_id': 3, **SURVEY_ANSWERS, 'q3': 'Почти никогда', 'q12': 'Иногда'}
+]
+
 
 MOCK_TOPICS = [
     [
@@ -83,6 +131,7 @@ MOCK_SHAP = {
 
 async def seed_database():
     db_file = settings.DATABASE_URL.split('///')[-1]
+    print(db_file)
 
     if os.path.exists(db_file):
         logger.info(f"Удаление старой базы данных: {db_file}")
@@ -103,6 +152,20 @@ async def seed_database():
             session.add(employee)
         await session.commit()
         logger.info(f"{len(MOCK_EMPLOYEES)} сотрудников добавлено.")
+
+        logger.info("Добавление моковых фичей сотрудников...")
+        for features_data in MOCK_FEATURES:
+            features = EmployeeFeatures(**features_data)
+            session.add(features)
+        await session.commit()
+        logger.info(f"{len(MOCK_FEATURES)} записей с фичами добавлено.")
+
+        logger.info("Добавление моковых результатов опросов...")
+        for survey_data in MOCK_SURVEYS:
+            survey = SurveyResult(**survey_data)
+            session.add(survey)
+        await session.commit()
+        logger.info(f"{len(MOCK_SURVEYS)} результатов опросов добавлено.")
 
         logger.info("Создание моковой истории диалога...")
         for idx, emp in enumerate(MOCK_EMPLOYEES):

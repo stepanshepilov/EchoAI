@@ -6,126 +6,102 @@ from datetime import datetime, timedelta
 from sqlalchemy.ext.asyncio import create_async_engine
 from src.settings import settings
 from src.db.models import Base, Employee, DialogueSession, ChatMessage, DialogueAnalysis, BurnoutPrediction, SurveyResult, EmployeeFeatures
+from faker import Faker
+import random
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
+fake = Faker('ru_RU')
+
 MOCK_EMPLOYEES = [
-    {"id": 1, "telegram_id": 111111111, 'name': 'Чувак 1', 'cdek_id': '123'},
-    {"id": 2, "telegram_id": 222222222, 'name': 'Чувак 2', 'cdek_id': '334'},
-    {"id": 3, "telegram_id": 333333333, 'name': 'Чувак 3', 'cdek_id': '445'},
+    {"id": i, "telegram_id": 111111110 + i, 'name': f'Сотрудник {i}', 'cdek_id': str(122 + i)}
+    for i in range(1, 21)
 ]
 
-MOCK_FEATURES = [
-    {
-        'employee_id': 1, 'age': 32, 'gender': 1, 'tenure_months': 24,
-        'tasks_completed_last_30d': 50, 'tasks_failed_last_30d': 2,
-        'tasks_completed_last_90d': 150, 'tasks_failed_last_90d': 5,
-        'tasks_completed_last_365d': 600, 'tasks_failed_last_365d': 20,
-        'sick_leave_count_last_30d': 0, 'short_sick_leaves_count_last_30d': 0, 'total_sick_days_last_30d': 0,
-        'sick_leave_count_last_90d': 1, 'short_sick_leaves_count_last_90d': 1, 'total_sick_days_last_90d': 3,
-        'sick_leave_count_last_365d': 2, 'short_sick_leaves_count_last_365d': 1, 'total_sick_days_last_365d': 10,
-        'days_since_last_vacation': 120,
-        'avg_sentiment_last_30d': 0.1, 'avg_sentiment_last_90d': 0.15, 'avg_sentiment_last_365d': 0.2,
-        'sentiment_trend_last_90d': 0.05
-    },
-    {
-        'employee_id': 2, 'age': 28, 'gender': 0, 'tenure_months': 12,
-        'tasks_completed_last_30d': 70, 'tasks_failed_last_30d': 8,
-        'tasks_completed_last_90d': 210, 'tasks_failed_last_90d': 20,
-        'tasks_completed_last_365d': 800, 'tasks_failed_last_365d': 50,
-        'sick_leave_count_last_30d': 1, 'short_sick_leaves_count_last_30d': 1, 'total_sick_days_last_30d': 2,
-        'sick_leave_count_last_90d': 2, 'short_sick_leaves_count_last_90d': 2, 'total_sick_days_last_90d': 5,
-        'sick_leave_count_last_365d': 4, 'short_sick_leaves_count_last_365d': 3, 'total_sick_days_last_365d': 15,
-        'days_since_last_vacation': 280,
-        'avg_sentiment_last_30d': -0.6, 'avg_sentiment_last_90d': -0.4, 'avg_sentiment_last_365d': -0.1,
-        'sentiment_trend_last_90d': -0.2
-    },
-    {
-        'employee_id': 3, 'age': 45, 'gender': 1, 'tenure_months': 120,
-        'tasks_completed_last_30d': 30, 'tasks_failed_last_30d': 0,
-        'tasks_completed_last_90d': 90, 'tasks_failed_last_90d': 1,
-        'tasks_completed_last_365d': 350, 'tasks_failed_last_365d': 5,
-        'sick_leave_count_last_30d': 0, 'short_sick_leaves_count_last_30d': 0, 'total_sick_days_last_30d': 0,
-        'sick_leave_count_last_90d': 0, 'short_sick_leaves_count_last_90d': 0, 'total_sick_days_last_90d': 0,
-        'sick_leave_count_last_365d': 1, 'short_sick_leaves_count_last_365d': 0, 'total_sick_days_last_365d': 7,
-        'days_since_last_vacation': 30,
-        'avg_sentiment_last_30d': 0.5, 'avg_sentiment_last_90d': 0.4, 'avg_sentiment_last_365d': 0.3,
-        'sentiment_trend_last_90d': 0.1
+MOCK_FEATURES = []
+for i in range(1, 21):
+    tenure = random.randint(3, 120)
+    features = {
+        'employee_id': i, 'age': random.randint(22, 60), 'gender': random.choice([0, 1]), 'tenure_months': tenure,
+        'tasks_completed_last_30d': random.randint(20, 100), 'tasks_failed_last_30d': random.randint(0, 10),
+        'tasks_completed_last_90d': random.randint(60, 300), 'tasks_failed_last_90d': random.randint(1, 30),
+        'tasks_completed_last_365d': random.randint(240, 1200), 'tasks_failed_last_365d': random.randint(5, 120),
+        'sick_leave_count_last_30d': random.randint(0, 2), 'short_sick_leaves_count_last_30d': random.randint(0, 2),
+        'total_sick_days_last_30d': random.randint(0, 5),
+        'sick_leave_count_last_90d': random.randint(0, 5), 'short_sick_leaves_count_last_90d': random.randint(0, 5),
+        'total_sick_days_last_90d': random.randint(0, 15),
+        'sick_leave_count_last_365d': random.randint(0, 15), 'short_sick_leaves_count_last_365d': random.randint(0, 10),
+        'total_sick_days_last_365d': random.randint(0, 40),
+        'days_since_last_vacation': random.randint(10, 400),
+        'avg_sentiment_last_30d': round(random.uniform(-0.8, 0.8), 2),
+        'avg_sentiment_last_90d': round(random.uniform(-0.7, 0.7), 2),
+        'avg_sentiment_last_365d': round(random.uniform(-0.5, 0.5), 2),
+        'sentiment_trend_last_90d': round(random.uniform(-0.3, 0.3), 2)
     }
-]
-
-# Для краткости, заполним все ответы одинаковыми значениями
-SURVEY_ANSWERS = {f'q{i}': 'Никогда' for i in range(1, 23)}
-MOCK_SURVEYS = [
-    {'employee_id': 1, **SURVEY_ANSWERS, 'q1': 'Очень часто', 'q5': 'Часто'},
-    {'employee_id': 2, **SURVEY_ANSWERS, 'q2': 'Иногда', 'q8': 'Редко'},
-    {'employee_id': 3, **SURVEY_ANSWERS, 'q3': 'Почти никогда', 'q12': 'Иногда'}
-]
+    MOCK_FEATURES.append(features)
 
 
-MOCK_TOPICS = [
-    [
-        {
-            "topic": "Переработки",
-            "category": "workload",
-            "mentions": 3,
-            "sentiment": -0.6,
-            "importance": 0.8,
-            "examples": ["работаю по выходным", "засиживаюсь допоздна"]
-        },
-        {
-            "topic": "Конфликт с коллегой",
-            "category": "team_relations",
-            "mentions": 2,
-            "sentiment": -0.8,
-            "importance": 0.6,
-            "examples": ["постоянные споры", "не находим общий язык"]
-        }
-    ],
-    [
-        {
-            "topic": "Недостаток признания",
-            "category": "recognition",
-            "mentions": 1,
-            "sentiment": -0.3,
-            "importance": 0.5,
-            "examples": ["никто не замечает мои усилия"]
-        }
-    ],
-    [
-        {
-            "topic": "Усталость",
-            "category": "health",
-            "mentions": 2,
-            "sentiment": -0.7,
-            "importance": 0.7,
-            "examples": ["чувствую себя выжатым"]
-        }
-    ]
+SURVEY_ANSWERS = {f'q{i}': random.choice(['Никогда', 'Редко', 'Иногда', 'Часто', 'Очень часто']) for i in range(1, 23)}
+MOCK_SURVEYS = []
+for i in range(1, 21):
+    answers = SURVEY_ANSWERS.copy()
+    # Вносим немного разнообразия в ответы
+    for _ in range(5):
+        q_key = f'q{random.randint(1, 22)}'
+        answers[q_key] = random.choice(['Никогда', 'Редко', 'Иногда', 'Часто', 'Очень часто'])
+    survey = {'employee_id': i, **answers}
+    MOCK_SURVEYS.append(survey)
+
+
+MOCK_TOPICS_POOL = [
+    {"topic": "Переработки", "category": "workload", "sentiment": -0.6, "importance": 0.8, "examples": ["работаю по выходным", "засиживаюсь допоздна"]},
+    {"topic": "Конфликт с коллегой", "category": "team_relations", "sentiment": -0.8, "importance": 0.6, "examples": ["постоянные споры", "не находим общий язык"]},
+    {"topic": "Недостаток признания", "category": "recognition", "sentiment": -0.3, "importance": 0.5, "examples": ["никто не замечает мои усилия"]},
+    {"topic": "Усталость", "category": "health", "sentiment": -0.7, "importance": 0.7, "examples": ["чувствую себя выжатым"]},
+    {"topic": "Сложные задачи", "category": "workload", "sentiment": 0.2, "importance": 0.4, "examples": ["интересный проект", "развиваюсь"]},
+    {"topic": "Хороший коллектив", "category": "team_relations", "sentiment": 0.9, "importance": 0.9, "examples": ["всегда помогут", "приятно общаться"]},
+    {"topic": "Премия", "category": "recognition", "sentiment": 0.9, "importance": 0.8, "examples": ["получил бонус", "оценили мою работу"]},
+    {"topic": "Проблемы со здоровьем", "category": "health", "sentiment": -0.9, "importance": 0.9, "examples": ["часто болею", "постоянно что-то болит"]},
 ]
+
+MOCK_TOPICS = []
+for _ in range(20):
+    num_topics = random.randint(1, 4)
+    topics = random.sample(MOCK_TOPICS_POOL, num_topics)
+    for topic in topics:
+        topic['mentions'] = random.randint(1, 5)
+    MOCK_TOPICS.append(topics)
+
 
 MOCK_SHAP = {
     "base_value": 0.35,
-    "prediction_value": 0.85,
+    "prediction_value": round(random.uniform(0.1, 0.95), 2),
     "features": [
         {
             "feature_name": "days_since_last_vacation",
-            "feature_value": 280,
-            "shap_value": 0.25,
-            "display_value": "280 дней",
+            "feature_value": random.randint(10, 400),
+            "shap_value": round(random.uniform(-0.3, 0.3), 2),
+            "display_value": f"{random.randint(10, 400)} дней",
             "category": "time_off"
         },
         {
             "feature_name": "avg_sentiment_last_30d",
-            "feature_value": -0.6,
-            "shap_value": 0.18,
-            "display_value": "-60%",
+            "feature_value": round(random.uniform(-0.8, 0.8), 2),
+            "shap_value": round(random.uniform(-0.3, 0.3), 2),
+            "display_value": f"{int(round(random.uniform(-0.8, 0.8), 2) * 100)}%",
             "category": "sentiment"
+        },
+        {
+            "feature_name": "tasks_failed_last_90d",
+            "feature_value": random.randint(1, 30),
+            "shap_value": round(random.uniform(-0.2, 0.2), 2),
+            "display_value": f"{random.randint(1, 30)} шт.",
+            "category": "performance"
         }
     ],
     "top_risk_factors": ["days_since_last_vacation", "avg_sentiment_last_30d"],
-    "top_protective_factors": []
+    "top_protective_factors": ["tenure_months"]
 }
 
 
@@ -176,15 +152,15 @@ async def seed_database():
 
             messages = [
                 ChatMessage(session_id=session_id, role='assistant', content='Привет! Это Эхо. Как прошла неделя?',
-                            timestamp=datetime.utcnow() - timedelta(minutes=5)),
-                ChatMessage(session_id=session_id, role='user', content='Привет. Неделя была тяжелая, много отчетов.',
-                            timestamp=datetime.utcnow() - timedelta(minutes=4)),
+                            timestamp=datetime.utcnow() - timedelta(days=7, minutes=5)),
+                ChatMessage(session_id=session_id, role='user', content=fake.sentence(nb_words=10),
+                            timestamp=datetime.utcnow() - timedelta(days=7, minutes=4)),
                 ChatMessage(session_id=session_id, role='assistant',
                             content='Слышу, звучит утомительно. Рутина выматывает. А было что-то, что наоборот, порадовало?',
-                            timestamp=datetime.utcnow() - timedelta(minutes=3)),
+                            timestamp=datetime.utcnow() - timedelta(days=7, minutes=3)),
                 ChatMessage(session_id=session_id, role='user',
-                            content='Да, удалось закрыть старый баг, который всех бесил.',
-                            timestamp=datetime.utcnow() - timedelta(minutes=2)),
+                            content=fake.sentence(nb_words=8),
+                            timestamp=datetime.utcnow() - timedelta(days=7, minutes=2)),
             ]
             session.add_all(messages)
             await session.commit()
@@ -193,8 +169,8 @@ async def seed_database():
             logger.info("Создание мокового анализа...")
             analysis = DialogueAnalysis(
                 session_id=session_id,
-                sentiment=-0.2 + idx * 0.1,
-                is_burnout_risk_detected=bool(idx % 2)
+                sentiment=round(random.uniform(-1, 1), 2),
+                is_burnout_risk_detected=bool(random.getrandbits(1))
             )
             session.add(analysis)
             await session.commit()
@@ -202,11 +178,41 @@ async def seed_database():
 
         logger.info("Создание моковых записей BurnoutPrediction...")
         for idx, emp in enumerate(MOCK_EMPLOYEES):
+            # Генерируем новый MOCK_SHAP для каждой записи
+            current_shap = {
+                "base_value": 0.35,
+                "prediction_value": round(random.uniform(0.1, 0.95), 2),
+                "features": [
+                    {
+                        "feature_name": "days_since_last_vacation",
+                        "feature_value": random.randint(10, 400),
+                        "shap_value": round(random.uniform(-0.3, 0.3), 2),
+                        "display_value": f"{random.randint(10, 400)} дней",
+                        "category": "time_off"
+                    },
+                    {
+                        "feature_name": "avg_sentiment_last_30d",
+                        "feature_value": round(random.uniform(-0.8, 0.8), 2),
+                        "shap_value": round(random.uniform(-0.3, 0.3), 2),
+                        "display_value": f"{int(round(random.uniform(-0.8, 0.8), 2) * 100)}%",
+                        "category": "sentiment"
+                    },
+                    {
+                        "feature_name": "tasks_failed_last_90d",
+                        "feature_value": random.randint(1, 30),
+                        "shap_value": round(random.uniform(-0.2, 0.2), 2),
+                        "display_value": f"{random.randint(1, 30)} шт.",
+                        "category": "performance"
+                    }
+                ],
+                "top_risk_factors": random.sample(["days_since_last_vacation", "avg_sentiment_last_30d", "tasks_failed_last_90d"], 2),
+                "top_protective_factors": random.sample(["tenure_months", "tasks_completed_last_30d"], 1)
+            }
             prediction = BurnoutPrediction(
                 user_id=emp['id'],
                 topics_from_dialogues=MOCK_TOPICS[idx],
-                probability_of_burnout=0.3 + idx * 0.3,
-                shap_explanations=MOCK_SHAP
+                probability_of_burnout=round(random.uniform(0.05, 0.95), 2),
+                shap_explanations=current_shap
             )
             session.add(prediction)
         await session.commit()
@@ -217,4 +223,24 @@ async def seed_database():
 
 
 if __name__ == "__main__":
+    # Для запуска этого скрипта, вам нужно будет создать файлы:
+    # src/settings.py
+    # src/db/models.py
+    # src/db/session.py
+    #
+    # Примерное содержимое settings.py:
+    # class Settings:
+    #     DATABASE_URL = "sqlite+aiosqlite:///./test.db"
+    # settings = Settings()
+    #
+    # Примерное содержимое session.py
+    # from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+    # from sqlalchemy.orm import sessionmaker
+    # from src.settings import settings
+    #
+    # engine = create_async_engine(settings.DATABASE_URL, echo=True)
+    # AsyncSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine, class_=AsyncSession)
+    #
+    # Вам также нужно будет определить все модели SQLAlchemy в models.py (Base, Employee, и т.д.)
+    #
     asyncio.run(seed_database())

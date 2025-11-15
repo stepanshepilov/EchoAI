@@ -3,6 +3,7 @@ import uuid
 import pandas as pd
 from typing import List
 import numpy as np
+import json  # <--- ДОБАВЛЕНО
 
 from fastapi import APIRouter, HTTPException, Query, Depends, WebSocket, WebSocketDisconnect
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -95,7 +96,7 @@ async def get_team_pulse(db: AsyncSession = Depends(get_db)):
             # Добавить реальную логику sentiment_trend
             sentiment_trend = np.random.uniform(-0.5, 0.5)
 
-            employee_pulses.append(EmployeePulse(token=token, risk_probability=probability, sentiment_trend=0.0))
+            employee_pulses.append(EmployeePulse(token=token, risk_probability=probability, sentiment_trend=sentiment_trend))
 
             # Агрегируем результаты
             total_risk_score += probability
@@ -196,8 +197,11 @@ class ConnectionManager:
         self.active_connections.remove(websocket)
 
     async def broadcast(self, message: dict):
-        for connection in self.active_connections:
-            await connection.send_json(message)
+        for connection in self.active_connections[:]:
+            try:
+                await connection.send_json(message)
+            except RuntimeError:
+                self.disconnect(connection)
 
 
 # Создаем единственный экземпляр менеджера, который будет использоваться во всем приложении
@@ -207,10 +211,20 @@ manager = ConnectionManager()
 @router.websocket("/ws/dashboard")
 async def websocket_endpoint(websocket: WebSocket):
     await manager.connect(websocket)
+    logger.info("Новый клиент WebSocket подключился.")
     try:
         while True:
-            # Просто ждем сообщений, чтобы держать соединение открытым
-            await websocket.receive_text()
+            data = await websocket.receive_text()
+            logger.info(f"Получено сообщение от бота по WebSocket: {data}")
+
+            try:
+                message_data = json.loads(data)
+
+                await manager.broadcast(message_data)
+                logger.info(f"Сообщение разослано {len(manager.active_connections)} клиентам.")
+            except json.JSONDecodeError:
+                logger.warning(f"Получено некорректное JSON-сообщение, оно будет проигнорировано: {data}")
+
     except WebSocketDisconnect:
         manager.disconnect(websocket)
         logger.info("Клиент WebSocket отсоединился.")
@@ -227,9 +241,9 @@ async def notify_risk_update(update_data: dict):
 
 @router.get("/dashboard/employees/{employee_token}/topics")
 async def get_employee_topics(
-    employee_token: str,
-    limit: int = Query(10, ge=1, le=50, description="Максимум топиков"),
-    db: AsyncSession = Depends(get_db)
+        employee_token: str,
+        limit: int = Query(10, ge=1, le=50, description="Максимум топиков"),
+        db: AsyncSession = Depends(get_db)
 ):
     user_id = token_to_employee_id_cache.get(employee_token)
     if not user_id:

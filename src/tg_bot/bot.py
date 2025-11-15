@@ -21,12 +21,12 @@ import logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-from src.ai_services.whisper_service.speech_to_text import transcribe_audio
+#from src.ai_services.whisper_service.speech_to_text import transcribe_audio
 from src.ai_services.base import ChatLM
 from src.settings import settings
 from src.db.repo import SQLiteRepository
 from src.db.session import AsyncSessionLocal
-from src.tg_bot.ws_service import ws_notifier 
+from src.tg_bot.ws_service import ws_notifier
 from src.ai_services.analyzer.analyzer_service import analyze_user_session
 from src.ai_services.prompts.questions import QUESTIONS, ANSWER_OPTIONS
 
@@ -366,23 +366,23 @@ async def handle_text_message(message: Message, state: FSMContext):
 
 
 # Голосовые сообщения (voice)
-@dp.message(UserStates.authenticated, F.voice)
-async def handle_voice(message: Message, state: FSMContext):
-    # генерируем имя файла .ogg
-    file_name = f"{uuid.uuid4()}.mp3"
-    dst_path = TEMP_AUDIO_DIR / file_name
-
-    await bot.download(message.voice, destination=dst_path)
-    logger.info(f"Аудиофайл сохранён: {dst_path.as_posix()}")
-    
-    result = await transcribe_audio(str(dst_path))
-
-    if "text" in result:
-        await bot.send_chat_action(chat_id=message.chat.id, action=ChatAction.TYPING)
-        ai_response_text = await get_ai_answer(result["text"], message.chat.id, state)
-        await message.answer(ai_response_text)  
-    else:
-        await message.answer("Не удалось распознать речь 😔")
+# @dp.message(UserStates.authenticated, F.voice)
+# async def handle_voice(message: Message, state: FSMContext):
+#     # генерируем имя файла .ogg
+#     file_name = f"{uuid.uuid4()}.mp3"
+#     dst_path = TEMP_AUDIO_DIR / file_name
+#
+#     await bot.download(message.voice, destination=dst_path)
+#     logger.info(f"Аудиофайл сохранён: {dst_path.as_posix()}")
+#
+#     result = await transcribe_audio(str(dst_path))
+#
+#     if "text" in result:
+#         await bot.send_chat_action(chat_id=message.chat.id, action=ChatAction.TYPING)
+#         ai_response_text = await get_ai_answer(result["text"], message.chat.id, state)
+#         await message.answer(ai_response_text)
+#     else:
+#         await message.answer("Не удалось распознать речь 😔")
 
 
 
@@ -505,14 +505,14 @@ async def main():
 
     await set_main_menu(bot)
     await bot.delete_webhook(drop_pending_updates=True)
-    await dp.start_polling(bot)
+    # await dp.start_polling(bot)
     
-    # try:
-    #     await ws_notifier.start()
-    #     await dp.start_polling(bot)
-    # finally:
-    #     await ws_notifier.stop()
-    #     await bot.session.close() 
+    try:
+        await ws_notifier.start()
+        await dp.start_polling(bot)
+    finally:
+        await ws_notifier.stop()
+        await bot.session.close()
 
 
 if __name__ == "__main__":

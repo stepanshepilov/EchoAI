@@ -37,23 +37,25 @@ async def analyze_user_session(telegram_id: int) -> Dict[str, Any]:
         session_id = last_session.id
         logger.info(f"Найдена последняя сессия: {session_id}")
 
+        full_dialogue_text = ''
         # 3. Взять набор сообщений по session_id
         messages = await repo.get_conversation_history(session_id=session_id)
            
         if not messages or messages is not None:
             logger.warning(f"Сессия {session_id} пуста, анализ невозможен.")
-            return {"error": "Сессия не содержит сообщений."}
-        messages = messages[-20:]
-        
-        # Объединяем все сообщения в один большой текст для анализа
-        full_dialogue_text = "\n".join(
-            f"{msg['role']}: {msg['content']}" for msg in messages
-        )
+            pass
+        if messages:
+            messages = messages[-20:]
+
+            # Объединяем все сообщения в один большой текст для анализа
+            full_dialogue_text += "\n".join(
+                f"{msg['role']}: {msg['content']}" for msg in messages
+            )
         
         last_survey = await repo.get_survey_result(employee_id=employee.id)
         if not last_survey:
             logger.warning(f"Результаты теста для пользоватя {employee.id} не найдены")
-            pass 
+            return {"error": "Сессия не содержит сообщений."}
         else:
             logger.info(f"Найдена тст для: {telegram_id}")
             survey_details = ["\n\nLast survey results:"]

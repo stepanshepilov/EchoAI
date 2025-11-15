@@ -79,12 +79,11 @@ async def get_db_user(telegram_id: int, full_name: str, state: FSMContext):
             await state.update_data({FSM_SESSION_ID_KEY: new_db_session.id})
             logger.info(f"Для пользователя {telegram_id} стартовала сессия {new_db_session.id}")
 
-            
             await ws_notifier.send({
-                    "user_id": telegram_id,
-                    "event": "session_started",
-                    "session_id": new_db_session.id
-                })
+                "user_id": telegram_id,
+                "event": "session_started",
+                "session_id": new_db_session.id
+            })
 
             # Возвращаем словарь для совместимости
             return {
@@ -107,7 +106,12 @@ async def create_db_user(telegram_id: int, full_name: str, state: FSMContext, cd
         if employee_object:
             new_db_session = await begin_new_session(employee_object.id)
             await state.update_data({FSM_SESSION_ID_KEY: new_db_session.id})
-            logger.info(f"Для пользователя {telegram_id} стартовала сессия {new_db_session.id}")
+            logger.info(f"Для нового пользователя {telegram_id} стартовала сессия {new_db_session.id}")
+            await ws_notifier.send({
+                "user_id": telegram_id,
+                "event": "session_started",
+                "session_id": new_db_session.id
+            })
 
             return {
                 "user_id": employee_object.telegram_id,
@@ -141,7 +145,8 @@ async def cmd_start(message: Message, state: FSMContext):
     
     if await state.get_state() is not None:        
         logger.info(f'Пользователь {message.from_user.id} вышел из системы')
-        await analyze_user_session(message.from_user.id)
+        analyze_result = await analyze_user_session(message.from_user.id)
+        print(analyze_result)
 
     await state.clear() 
 
@@ -168,6 +173,19 @@ async def logout(message: Message, state: FSMContext):
     if await state.get_state() is not None:
         logger.info(f'Пользователь {message.from_user.id} вышел из системы')
         await message.answer("Сессия завершена. Нажмите /start, чтобы начать новую", reply_markup=ReplyKeyboardRemove())
+        
+        user_data = await state.get_data()
+        session_id = user_data.get(FSM_SESSION_ID_KEY)
+        if session_id: # Отправляем, только если есть ID сессии
+            await ws_notifier.send({
+                    "user_id": message.from_user.id,
+                    "event": "session_ended",
+                    "session_id": session_id,
+                    "reason": "command_finish" # Добавляем причину завершения
+                })
+
+        
+        
         await analyze_user_session(message.from_user.id)
         await state.clear()
     else:
@@ -285,7 +303,7 @@ async def survey_answer_handler(callback: CallbackQuery, state: FSMContext, bot:
         await state.set_state(UserStates.authenticated) # Возвращаем в обычное состояние
         await callback.message.answer(
             "Спасибо за ваши ответы! Опрос завершен.\n"
-            "Напишите что-нибудь, чтобы начать общение."
+            "Расскажите как прошел ваш рабочий день?"
         )
         try:
             async with AsyncSessionLocal() as db_session:
@@ -330,16 +348,16 @@ async def get_ai_answer(message_text, telegram_id: int, state: FSMContext):
         # Сохраняем сообщение пользователя
 
         user_message_obj = await repo.add_message(session_id=session_id, role="user", content=message_text)
-        await ws_notifier.send({
-            "user_id": telegram_id,
-            "event": "new_message",
-            "session_id": session_id,
-            "message": {
-                "role": user_message_obj.role,
-                "content": user_message_obj.content,
-                "timestamp": user_message_obj.timestamp.isoformat()
-            }
-        })
+        # await ws_notifier.send({
+        #     "user_id": telegram_id,
+        #     "event": "new_message",
+        #     "session_id": session_id,
+        #     "message": {
+        #         "role": user_message_obj.role,
+        #         "content": user_message_obj.content,
+        #         "timestamp": user_message_obj.timestamp.isoformat()
+        #     }
+        # })
 
         # Получаем историю
         history_for_ai = await repo.get_conversation_history(session_id=session_id)
@@ -535,16 +553,14 @@ async def main():
     scheduler.start()
     logger.info("Планировщик задач запущен.")
 
-    await dp.start_polling(bot)
-
-
+    # await dp.start_polling(bot)
     
-    # try:
-    #     await ws_notifier.start()
-    #     await dp.start_polling(bot)
-    # finally:
-    #     await ws_notifier.stop()
-    #     await bot.session.close() 
+    try:
+        await ws_notifier.start()
+        await dp.start_polling(bot)
+    finally:
+        await ws_notifier.stop()
+        await bot.session.close() 
 
 
 if __name__ == "__main__":

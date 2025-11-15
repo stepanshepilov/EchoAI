@@ -5,7 +5,7 @@ from typing import List, Dict, Any, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy import update, desc
-from src.db.models import Employee, DialogueSession, ChatMessage, DialogueAnalysis, SurveyResult
+from src.db.models import Employee, DialogueSession, ChatMessage, DialogueAnalysis, SurveyResult, EmployeeFeatures
 
 logger = logging.getLogger(__name__)
 
@@ -232,3 +232,16 @@ class SQLiteRepository(BaseRepository):
                 clean_data[field] = value
 
         return clean_data
+
+    async def get_latest_features(self, employee_id: int) -> Optional[EmployeeFeatures]:
+        """
+        Находит самый свежий набор фичей для сотрудника.
+        """
+        logger.info(f"Поиск последнего набора фичей для сотрудника с ID: {employee_id}")
+        result = await self.session.execute(
+            select(EmployeeFeatures)
+            .where(EmployeeFeatures.employee_id == employee_id)
+            .order_by(desc(EmployeeFeatures.created_at))
+            .limit(1)
+        )
+        return result.scalar_one_or_none()

@@ -2,7 +2,7 @@ from pydantic import BaseModel
 from typing import List, Dict, Any
 
 class EmployeePulse(BaseModel):
-    token: str
+    telegram_id: str
     risk_probability: float
     sentiment_trend: float
 
@@ -18,6 +18,6 @@ class ShapFactor(BaseModel):
     contribution: float
 
 class ExplanationResponse(BaseModel):
-    token: str
+    telegram_id: str
     burnout_probability: float
     shap_explanation: Dict[str, Any]

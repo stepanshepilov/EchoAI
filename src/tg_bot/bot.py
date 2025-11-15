@@ -284,8 +284,26 @@ async def survey_answer_handler(callback: CallbackQuery, state: FSMContext, bot:
             "Спасибо за ваши ответы! Опрос завершен.\n"
             "Используйте команду /dialogue, чтобы начать общение."
         )
-        # TODO: Здесь можно запустить асинхронную задачу для анализа ответов
-        # asyncio.create_task(analyze_survey_results(answers))
+        try:
+            async with AsyncSessionLocal() as db_session:
+                repo = SQLiteRepository(db_session)
+
+                # Находим или создаём сотрудника по telegram_id
+                employee = await repo.get_or_create_employee(telegram_id=callback.from_user.id)
+                normalized_answers = {
+                    f"q{int(k)}": v
+                    for k, v in answers.items()
+                }
+                employee_id = employee.id
+
+                await repo.save_survey_result(employee_id=employee_id, answers=normalized_answers)
+
+                logger.info(
+                    f"Результаты опроса {answers} для пользователя {callback.from_user.id} "
+                    f"(employee_id={employee_id}) сохранены в БД."
+                )
+        except Exception as e:
+            logger.exception(f"Ошибка при сохранении результатов опроса в БД: {e}")
 
 
 @dp.message(UserStates.in_survey, F.text)
@@ -487,14 +505,14 @@ async def main():
 
     await set_main_menu(bot)
     await bot.delete_webhook(drop_pending_updates=True)
-    # await dp.start_polling(bot)
+    await dp.start_polling(bot)
     
-    try:
-        await ws_notifier.start()
-        await dp.start_polling(bot)
-    finally:
-        await ws_notifier.stop()
-        await bot.session.close() 
+    # try:
+    #     await ws_notifier.start()
+    #     await dp.start_polling(bot)
+    # finally:
+    #     await ws_notifier.stop()
+    #     await bot.session.close() 
 
 
 if __name__ == "__main__":

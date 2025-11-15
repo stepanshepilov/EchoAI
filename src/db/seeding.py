@@ -5,7 +5,7 @@ import logging
 from datetime import datetime, timedelta
 from sqlalchemy.ext.asyncio import create_async_engine
 from src.settings import settings
-from src.db.models import Base, Employee, DialogueSession, ChatMessage, DialogueAnalysis, BurnoutPrediction
+from src.db.models import Base, Employee, DialogueSession, ChatMessage, DialogueAnalysis, BurnoutPrediction, SurveyResult
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)

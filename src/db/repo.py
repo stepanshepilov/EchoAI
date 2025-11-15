@@ -5,7 +5,7 @@ from typing import List, Dict, Any, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy import update, desc
-from src.db.models import Employee, DialogueSession, ChatMessage, DialogueAnalysis
+from src.db.models import Employee, DialogueSession, ChatMessage, DialogueAnalysis, SurveyResult
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +40,14 @@ class BaseRepository(ABC):
 
     @abstractmethod 
     async def get_last_session_for_employee(self, employee_id: int) -> Optional[DialogueSession]:
+        pass
+
+    @abstractmethod
+    async def save_survey_result(self, employee_id: int, answers: Dict[str, str]) -> SurveyResult:
+        pass
+
+    @abstractmethod
+    async def get_survey_result(self, employee_id: int) -> Optional[SurveyResult]:
         pass
 
 
@@ -171,3 +179,60 @@ class SQLiteRepository(BaseRepository):
             .limit(1) # Берем только первую (самую свежую) запись
         )
         return result.scalar_one_or_none()
+    
+    
+    async def save_survey_result(self, employee_id: int, answers: Dict[str, str]) -> SurveyResult:
+        """
+        answers = {"q1": "text", "q5": "text", ...} — остальные становятся NULL
+        """
+        # ищем текущие результаты
+        result = await self.session.execute(
+            select(SurveyResult).where(SurveyResult.employee_id == employee_id)
+        )
+        survey = result.scalar_one_or_none()
+
+        if survey is None:
+            survey = SurveyResult(employee_id=employee_id)
+
+        # список всех колонок q1..q22
+        question_fields = [f"q{i}" for i in range(1, 23)]
+
+        for field in question_fields:
+            # если ключ есть — обновляем
+            if field in answers:
+                setattr(survey, field, answers[field])
+            else:
+                # нет в answers — ставим NULL
+                setattr(survey, field, None)
+
+        self.session.add(survey)
+        await self.session.commit()
+        await self.session.refresh(survey)
+        logger.info(f"Сохранены результаты опроса для сотрудника {employee_id}")
+        return survey
+
+
+
+    async def get_survey_result(self, employee_id: int) -> Optional[Dict[str, Any]]:
+        result = await self.session.execute(
+            select(SurveyResult).where(SurveyResult.employee_id == employee_id)
+        )
+        survey: SurveyResult = result.scalar_one_or_none()
+
+        if survey is None:
+            return None
+
+        # создаём словарь только с заполненными ответами
+        clean_data = {
+            "id": survey.id,
+            "employee_id": survey.employee_id
+        }
+
+        question_fields = [f"q{i}" for i in range(1, 23)]
+
+        for field in question_fields:
+            value = getattr(survey, field)
+            if value is not None:
+                clean_data[field] = value
+
+        return clean_data

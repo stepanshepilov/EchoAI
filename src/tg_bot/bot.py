@@ -29,6 +29,7 @@ from src.db.session import AsyncSessionLocal
 from src.tg_bot.ws_service import ws_notifier 
 from src.ai_services.analyzer.analyzer_service import analyze_user_session
 from src.ai_services.prompts.questions import QUESTIONS, ANSWER_OPTIONS
+from src.ai_services.analyzer.test_analyzer import get_ai_recommended_questions
 
 # ==== Настройки ====
 AI = ChatLM()
@@ -56,21 +57,21 @@ FSM_SURVEY_CURRENT_INDEX_KEY = 'survey_current_index'
 FSM_SURVEY_QUESTIONS_KEY = 'survey_questions'
 
 
-async def get_QUESTIONS(telegram_id: int) -> dict:
-    """
-    Имитирует запрос к внешней системе для получения персонализированного
-    набора вопросов для существующего пользователя.
-    Возвращает словарь формата {номер_вопроса: текст_вопроса}.
-    """
-    logger.info(f"Получение персонализированных вопросов для 'старого' пользователя {telegram_id}...")
-    # В реальной жизни здесь будет http-запрос к вашему API.
-    # Сейчас для примера вернем другой набор вопросов.
-    await asyncio.sleep(0.5) # Имитация сетевой задержки
-    return {
-        2: "Чувство усталости или упадка сил в течение дня?",
-        5: "Ощущение негативизма или цинизма, связанное с работой?",
-        13: "Трудности с концентрацией внимания на рабочих задачах?",
-    }
+# async def get_QUESTIONS(telegram_id: int) -> dict:
+#     """
+#     Имитирует запрос к внешней системе для получения персонализированного
+#     набора вопросов для существующего пользователя.
+#     Возвращает словарь формата {номер_вопроса: текст_вопроса}.
+#     """
+#     logger.info(f"Получение персонализированных вопросов для 'старого' пользователя {telegram_id}...")
+#     # В реальной жизни здесь будет http-запрос к вашему API.
+#     # Сейчас для примера вернем другой набор вопросов.
+#     await asyncio.sleep(0.5) # Имитация сетевой задержки
+#     return {
+#         2: "Чувство усталости или упадка сил в течение дня?",
+#         5: "Ощущение негативизма или цинизма, связанное с работой?",
+#         13: "Трудности с концентрацией внимания на рабочих задачах?",
+#     }
 
 
 # ==== ДЛЯ РАБОТЫ С БАЗАМИ ДАННЫХ ====
@@ -186,16 +187,20 @@ async def start_survey(message: Message, state: FSMContext, is_new_user: bool = 
     """
     await state.set_state(UserStates.in_survey)
     
-    # --- Определяем, какой набор вопросов использовать ---
+    questions_to_ask = None 
     if not is_new_user:
-        questions_to_ask = await get_QUESTIONS(telegram_id=message.chat.id)
+        result = await get_ai_recommended_questions(telegram_id=message.chat.id)
+        
+        if 'question_indices' in result:
+            indices = result['question_indices']
+            questions_to_ask = {key: QUESTIONS[key] for key in indices if key in QUESTIONS}
 
-    if is_new_user or not questions_to_ask : 
+    if is_new_user or not questions_to_ask: 
         logger.info(f"Запуск стандартного опроса для пользователя {message.chat.id}")
         questions_to_ask = {key: QUESTIONS[key] for key in [1, 8, 9, 10, 12]}
 
     question_order = list(questions_to_ask.keys())
-    
+        
     # Сохраняем в FSM всё необходимое, включая сам словарь с вопросами
     await state.update_data({
         FSM_SURVEY_QUESTIONS_KEY: questions_to_ask, # <-- СОХРАНЯЕМ ВОПРОСЫ

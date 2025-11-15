@@ -59,16 +59,33 @@ class ChatLM(BaseLM):
         return ai_response
 
 
-class TestAnalzyer(BaseLM):
+# class TestAnalzyer(BaseLM):
+#     def __init__(self):
+#         super().__init__()
+#         self.system_prompt = SYSTEM_PROMPT_TEST
+#         self.user_prompt = USER_PROMPT_TEST
+    
+#     async def analyze(self, test_results: str) -> str:
+#         messages = [
+#             {"role": "system", "content": self.system_prompt},
+#             {"role": "user", "content": self.user_prompt.format(test_result=test_results)}
+#         ]
+
+#         return await super().chat_completion(messages=messages, temperature=0)
+
+
+class QuestionRecommender(BaseLM):
     def __init__(self):
         super().__init__()
         self.system_prompt = SYSTEM_PROMPT_TEST
         self.user_prompt = USER_PROMPT_TEST
     
-    async def analyze(self, test_results: str) -> str:
+    async def recommend(self, all_questions: str, user_answers: str) -> str:
         messages = [
             {"role": "system", "content": self.system_prompt},
-            {"role": "user", "content": self.user_prompt.format(test_result=test_results)}
+            {"role": "user", "content": self.user_prompt.format(
+                all_questions=all_questions,
+                user_answers=user_answers
+            )}
         ]
-
         return await super().chat_completion(messages=messages, temperature=0)

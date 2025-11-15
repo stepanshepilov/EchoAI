@@ -1,0 +1,30 @@
+# docker-compose.yml
+version: '3.8'
+
+services:
+  # Сервис 1: Backend + TG-Bot
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile # Используем основной Dockerfile
+    container_name: app-backend-bot
+    restart: always
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    volumes:
+      # Монтируем базу данных, чтобы она сохранялась на хосте
+      - ./database.db:/app/database.db
+      # Монтируем папку для временных аудиофайлов
+      - ./temp_audio:/app/temp_audio
+
+  # Сервис 2: Frontend
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend # Используем Dockerfile для фронтенда
+    container_name: frontend
+    restart: always
+    ports:
+      - "8080:80"

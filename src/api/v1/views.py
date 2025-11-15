@@ -7,7 +7,7 @@ import json
 from fastapi import APIRouter, HTTPException, Query, Depends, WebSocket, WebSocketDisconnect
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc
-from src.db.models import BurnoutPrediction, EmployeeFeatures, Employee
+from src.db.models import BurnoutPrediction, EmployeeFeatures, Employee, DialogueAnalysis, DialogueSession
 from src.db.session import get_db
 
 from .models import TeamPulseResponse, EmployeePulse, ExplanationResponse
@@ -198,29 +198,36 @@ async def websocket_endpoint(websocket: WebSocket):
 @router.get("/dashboard/employees/{telegram_id}/topics")
 async def get_employee_topics(
         telegram_id: int,
-        limit: int = Query(10, ge=1, le=50, description="Максимум топиков"),
+        limit: int = Query(10, ge=1, le=50, description="Максимум топиков"), # Параметр больше не используется, но оставлен для совместимости
         db: AsyncSession = Depends(get_db)
 ):
-    # ... (этот эндпоинт не использовал мок-фичи, оставляем без изменений)
     repo = SQLiteRepository(db)
     employee = await repo.get_employee(telegram_id=telegram_id)
     if not employee:
         raise HTTPException(status_code=404, detail=f"Сотрудник с telegram_id {telegram_id} не найден.")
 
+    # --- НАЧАЛО ИЗМЕНЕНИЙ ---
+
+    # ИЗМЕНЕНО: Запрос теперь идет к DialogueAnalysis через DialogueSession,
+    # чтобы найти самый свежий анализ для данного сотрудника.
     result = await db.execute(
-        select(BurnoutPrediction)
-        .where(BurnoutPrediction.user_id == employee.id)
-        .order_by(desc(BurnoutPrediction.id))
+        select(DialogueAnalysis)
+        .join(DialogueSession, DialogueAnalysis.session_id == DialogueSession.id)
+        .where(DialogueSession.employee_id == employee.id)
+        .order_by(desc(DialogueSession.created_at)) # Сортируем по дате сессии
         .limit(1)
     )
-    prediction = result.scalar_one_or_none()
-    if not prediction:
-        raise HTTPException(status_code=404, detail="Анализ не найден")
+    analysis = result.scalar_one_or_none() # Получаем объект DialogueAnalysis
 
+    if not analysis:
+        raise HTTPException(status_code=404, detail="Анализ для сотрудника не найден")
+
+    # ИЗМЕНЕНО: Формируем ответ на основе данных из DialogueAnalysis
     return {
         "telegram_id": telegram_id,
-        "topics": prediction.topics_from_dialogues[:limit],
-        "probability": prediction.probability_of_burnout
+        "topics": analysis.comment,  # Теперь это одна строка из поля comment
+        "sentiment": analysis.sentiment, # Добавлено для контекста
+        "is_burnout_risk_detected": analysis.is_burnout_risk_detected # Добавлено для контекста
     }
 
 

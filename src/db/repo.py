@@ -222,11 +222,7 @@ class SQLiteRepository(BaseRepository):
         if survey is None:
             return None
 
-        # создаём словарь только с заполненными ответами
-        clean_data = {
-            "id": survey.id,
-            "employee_id": survey.employee_id
-        }
+        clean_data = {}
 
         question_fields = [f"q{i}" for i in range(1, 23)]
 

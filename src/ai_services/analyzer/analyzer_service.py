@@ -68,11 +68,11 @@ async def analyze_user_session(telegram_id: int) -> Dict[str, Any]:
                 logger.warning(f"Результаты опроса для пользователя {employee.id} не найдены")
             
 
-    print('UUUUUUUUUUUUUUUUUUU', full_dialogue_text)
+    print('====================\n', full_dialogue_text)
 
 
         
-    # 4. Передать текст в анализатор
+    # 4.1 Передать текст в анализатор
     logger.info(f"Отправка текста сессии {session_id} на анализ в NLP сервис...")
     analysis_result = await nlp_service.analyze_sentiment(full_dialogue_text)
     print('\n\nanalysis_result: ', analysis_result)
@@ -81,11 +81,20 @@ async def analyze_user_session(telegram_id: int) -> Dict[str, Any]:
         logger.error(f"Ошибка NLP-анализа для сессии {session_id}: {analysis_result['error']}")
         return analysis_result
 
+    # 4.2 Передать текст в анализатор
+    logger.info(f"Отправка текста сессии {session_id} на анализ в NLP топиков...")
+    analysis_topics = await nlp_service.analyze_topics(full_dialogue_text)
+    print('\n\nanalysis_result: ', analysis_topics)
+    if "error" in analysis_topics:
+        logger.error(f"Ошибка NLP-анализа для сессии {session_id}: {analysis_topics['error']}")
+        return analysis_topics
+
     async with AsyncSessionLocal() as session:
         repo = SQLiteRepository(session)
         
         # 5. Сохранить результат в dialogue_analysis
         logger.info(f"Сохранение результата анализа для сессии {session_id}...")
+        analysis_result['comment'] = analysis_topics['comment']
         saved_analysis = await repo.save_analysis(session_id=session_id, analysis_data=analysis_result)
         
         logger.info(f"Анализ для сессии {session_id} успешно сохранен. Результат: {analysis_result}")

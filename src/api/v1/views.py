@@ -261,3 +261,57 @@ async def get_prediction(
         logger.error(f"Ошибка при выполнении предсказания для telegram_id {telegram_id}: {e}", exc_info=True)
         raise HTTPException(status_code=503,
                             detail=f"Сервис предсказаний недоступен или произошла внутренняя ошибка: {e}")
+
+
+@router.get("/dashboard/employees/{telegram_id}/what-if/vacation",
+            summary="Что если: Отправить в отпуск")
+async def get_what_if_vacation_prediction(
+        telegram_id: int,
+        db: AsyncSession = Depends(get_db)
+):
+    """
+    Рассчитывает "что если" сценарий: какой будет вероятность выгорания,
+    если сбросить счетчик дней с последнего отпуска до нуля.
+    """
+    logger.info(f"Запуск 'что если' сценария для telegram_id {telegram_id}")
+    repo = SQLiteRepository(db)
+    employee = await repo.get_employee(telegram_id=telegram_id)
+    if not employee:
+        raise HTTPException(status_code=404, detail=f"Сотрудник с telegram_id {telegram_id} не найден.")
+
+    try:
+        # 1. Получаем самые свежие фичи из БД
+        latest_features = await repo.get_latest_features(employee.id)
+        if not latest_features:
+            raise HTTPException(status_code=404, detail=f"Фичи для сотрудника {telegram_id} не найдены.")
+
+        # 2. Получаем текущую (оригинальную) вероятность
+        original_features_df = features_to_dataframe(latest_features)
+        original_probability = await prediction_service.predict_proba(original_features_df)
+
+        # 3. Создаем копию фичей и изменяем ее
+        # Мы используем ту же функцию, чтобы создать новый DataFrame, который можно безопасно менять
+        what_if_features_df = features_to_dataframe(latest_features)
+
+        # Проверяем, есть ли вообще такая колонка в DataFrame, чтобы избежать ошибок
+        if 'days_since_last_vacation' in what_if_features_df.columns:
+            logger.info(f"Изменение 'days_since_last_vacation' на 0 для 'что если' сценария.")
+            what_if_features_df['days_since_last_vacation'] = 0
+        else:
+            logger.warning("Колонка 'days_since_last_vacation' не найдена в фичах. Предсказание будет таким же.")
+
+        # 4. Получаем новую ("что если") вероятность
+        what_if_probability = await prediction_service.predict_proba(what_if_features_df)
+
+        # 5. Возвращаем оба результата для сравнения
+        return {
+            "telegram_id": telegram_id,
+            "original_probability": original_probability,
+            "what_if_vacation_probability": what_if_probability,
+            "probability_change": what_if_probability - original_probability
+        }
+
+    except Exception as e:
+        logger.error(f"Ошибка при выполнении 'что если' предсказания для telegram_id {telegram_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=503,
+                            detail=f"Сервис предсказаний недоступен или произошла внутренняя ошибка: {e}")

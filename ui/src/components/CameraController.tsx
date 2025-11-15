@@ -15,14 +15,12 @@ export const CameraController = ({ zoomIn }: Props) => {
   const speed = 0.08;
 
   useFrame(() => {
-    // Z
     if (Math.abs(camera.position.z - target.z) > 0.01) {
       camera.position.z += (target.z - camera.position.z) * speed;
     } else {
       camera.position.z = target.z;
     }
 
-    // Y
     if (Math.abs(camera.position.y - target.y) > 0.01) {
       camera.position.y += (target.y - camera.position.y) * speed;
     } else {

@@ -88,3 +88,17 @@ class AiHelper(BaseLM):
         ]
 
         return await super().chat_completion(messages=messages, temperature=1)
+
+    async def get_response(self, conversation_history: List[Dict]) -> str:
+        trimmed_history = conversation_history
+        
+        messages_for_api = [
+            {"role": "system", "content": self.system_prompt},
+            *trimmed_history
+        ]
+        
+        ai_response = await self.chat_completion(
+            messages=messages_for_api
+        )
+        
+        return ai_response

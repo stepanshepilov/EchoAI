@@ -109,3 +109,44 @@ class SurveyResult(Base):
     q20 = Column(String, nullable=True)
     q21 = Column(String, nullable=True)
     q22 = Column(String, nullable=True)
+
+
+class EmployeeFeatures(Base):
+    __tablename__ = 'employee_features'
+
+    id = Column(Integer, primary_key=True)
+    employee_id = Column(Integer, ForeignKey('employees.id'), nullable=False, index=True)
+
+    created_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False, index=True)
+
+    age = Column(Integer)
+    gender = Column(Integer)
+    tenure_months = Column(Integer)
+
+    tasks_completed_last_30d = Column(Integer)
+    tasks_failed_last_30d = Column(Integer)
+    tasks_completed_last_90d = Column(Integer)
+    tasks_failed_last_90d = Column(Integer)
+    tasks_completed_last_365d = Column(Integer)
+    tasks_failed_last_365d = Column(Integer)
+
+    # --- Фичи по отсутствиям ---
+    sick_leave_count_last_30d = Column(Integer)
+    short_sick_leaves_count_last_30d = Column(Integer)
+    total_sick_days_last_30d = Column(Integer)
+    sick_leave_count_last_90d = Column(Integer)
+    short_sick_leaves_count_last_90d = Column(Integer)
+    total_sick_days_last_90d = Column(Integer)
+    sick_leave_count_last_365d = Column(Integer)
+    short_sick_leaves_count_last_365d = Column(Integer)
+    total_sick_days_last_365d = Column(Integer)
+    days_since_last_vacation = Column(Integer)
+
+    # --- Фичи из диалогов ---
+    avg_sentiment_last_30d = Column(Float)
+    avg_sentiment_last_90d = Column(Float)
+    avg_sentiment_last_365d = Column(Float)
+    sentiment_trend_last_90d = Column(Float)
+
+    # Связь обратно к сотруднику
+    employee = relationship("Employee", back_populates="features")

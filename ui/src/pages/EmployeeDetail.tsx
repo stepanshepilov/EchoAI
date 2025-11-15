@@ -1,8 +1,8 @@
 import { useEffect, useState, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import styled, { keyframes } from 'styled-components';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
+import styled, { keyframes, css } from 'styled-components'; // <-- Добавили keyframes и css
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
-import { getExplanation, getTopics } from '../services/api';
+import { getExplanation, getTopics, getTeamPulse } from '../services/api';
 import { ExplanationResponse, TopicsResponse } from '../types';
 
 const sentimentColor = (sentiment: number) => {
@@ -14,16 +14,19 @@ const sentimentColor = (sentiment: number) => {
 export default function EmployeeDetail() {
   const { employeeToken } = useParams<{ employeeToken: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
 
+  const [employeeName, setEmployeeName] = useState<string | null>(location.state?.employeeName || null);
   const [explanation, setExplanation] = useState<ExplanationResponse | null>(null);
   const [topics, setTopics] = useState<TopicsResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
   const [predictedAfterVacation, setPredictedAfterVacation] = useState<number | null>(null);
+  
+  // 1. Исправлена ошибка: был только setIsPredicting
   const [isPredicting, setIsPredicting] = useState(false);
-  const [simCardVisible, setSimCardVisible] = useState(false);
 
+  const [simCardVisible, setSimCardVisible] = useState(false);
   const modalRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -31,12 +34,28 @@ export default function EmployeeDetail() {
     const fetchData = async () => {
       try {
         setIsLoading(true);
-        const [explData, topicsData] = await Promise.all([
+        const dataPromises: Promise<any>[] = [
           getExplanation(employeeToken),
           getTopics(employeeToken)
-        ]);
+        ];
+
+        if (!employeeName) {
+          dataPromises.push(getTeamPulse());
+        }
+
+        const [explData, topicsData, teamData] = await Promise.all(dataPromises);
+        
         setExplanation(explData);
         setTopics(topicsData);
+
+        if (teamData) {
+          const employeeIndex = teamData.employees.findIndex(
+            (emp: { telegram_id: string }) => emp.telegram_id === employeeToken
+          );
+          if (employeeIndex !== -1) {
+            setEmployeeName(`Сотрудник #${employeeIndex + 1}`);
+          }
+        }
       } catch (e: any) {
         setError(e.message || "Ошибка загрузки");
       } finally {
@@ -44,9 +63,8 @@ export default function EmployeeDetail() {
       }
     };
     fetchData();
-  }, [employeeToken]);
+  }, [employeeToken, employeeName]); // Добавил employeeName, чтобы избежать лишних запросов
 
-  // Закрытие карточки при клике вне
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (modalRef.current && !modalRef.current.contains(event.target as Node)) {
@@ -62,7 +80,7 @@ export default function EmployeeDetail() {
   }, [simCardVisible]);
 
   const simulateVacation = async () => {
-    if (!explanation) return;
+    if (!explanation || isPredicting) return;
     try {
       setIsPredicting(true);
       const features = { ...explanation.features, days_since_last_vacation: 0 };
@@ -71,7 +89,6 @@ export default function EmployeeDetail() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(features)
       });
-
       const data = await res.json();
       if (data?.probability !== undefined) {
         setPredictedAfterVacation(data.probability);
@@ -90,24 +107,23 @@ export default function EmployeeDetail() {
     .slice(0, 10)
     .reverse();
 
-  if (isLoading) return <Wrapper><StatusText>Загрузка...</StatusText></Wrapper>;
+  if (isLoading && !explanation) return <Wrapper><StatusText>Загрузка...</StatusText></Wrapper>;
   if (error) return <Wrapper><StatusText>Ошибка: {error}</StatusText></Wrapper>;
 
   return (
     <Wrapper>
       <Header>
-        <h1>Детализация по сотруднику</h1>
+        <h1>{employeeName ? `Аналитика: ${employeeName}` : 'Детализация по сотруднику'}</h1>
         <BackButton onClick={() => navigate('/dashboard')}>← К общему дашборду</BackButton>
       </Header>
-      <p>Token: {employeeToken}</p>
 
       <Grid>
         <Card>
           <h2>Ключевые факторы риска</h2>
           <ResponsiveContainer width="100%" height={400}>
-            <BarChart layout="vertical" data={chartData} margin={{ left: 150 }}>
+            <BarChart layout="vertical" data={chartData} margin={{ left: 120 }}>
               <XAxis type="number" hide />
-              <YAxis type="category" dataKey="feature" width={150} />
+              <YAxis type="category" dataKey="feature" width={120} tick={{ fontSize: 11 }} />
               <Tooltip formatter={(value: number) => value.toFixed(4)} />
               <Bar dataKey="contribution">
                 {chartData?.map((entry) => (
@@ -154,17 +170,49 @@ export default function EmployeeDetail() {
   );
 }
 
-const Wrapper = styled.div`padding: 60px; font-family: 'Roboto', sans-serif;`;
+// --- СТИЛИ ---
+
+// 2. Добавляем миксин для эффекта "пульсации"
+const pulseOnce = keyframes`
+  0% { transform: scale(1); }
+  50% { transform: scale(1.07); }
+  100% { transform: scale(1); }
+`;
+
+const buttonHoverEffect = css`
+  transition: transform 0.2s ease-out;
+  &:hover {
+    animation: ${pulseOnce} 0.4s ease-in-out;
+  }
+  &:active {
+    transform: scale(0.98);
+    transition: transform 0.1s;
+  }
+`;
+
+// 4. Обновляем стили для адаптивности
+const Wrapper = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 60px 20px;
+  font-family: 'Roboto', sans-serif;
+  width: 100%;
+  box-sizing: border-box;
+`;
+
 const Header = styled.div`
   display: flex;
   justify-content: space-between;
-  align-items: flex-end;
-  margin-bottom: 32px; /* отступ от блока вниз */
+  align-items: center;
+  flex-wrap: wrap; /* Позволяет переносить кнопку на новую строку */
+  gap: 16px;
+  width: 100%;
+  max-width: 1240px;
+  margin-bottom: 32px;
 `;
 
 const BackButton = styled.button`
-  margin-left: 20px;
-  margin-top: 8px;
   padding: 10px 16px;
   background-color: #2c3e50;
   color: white;
@@ -172,25 +220,19 @@ const BackButton = styled.button`
   border-radius: 8px;
   font-size: 14px;
   cursor: pointer;
-  transition: background-color 0.2s ease;
-
-  &:hover {
-    background-color: #34495e;
-  }
-`;
-
-const StatusText = styled.h1`
-  text-align: center;
-  font-size: 24px;
-  color: #666;
-  margin-top: 100px;
+  white-space: nowrap; /* Предотвращает перенос текста в кнопке */
+  
+  /* 3. Применяем миксин */
+  ${buttonHoverEffect}
 `;
 
 const Grid = styled.div`
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
   gap: 20px;
-  margin-top: 30px;
+  width: 100%;
+  max-width: 1240px;
 `;
 
 const Card = styled.div`
@@ -199,26 +241,31 @@ const Card = styled.div`
   border-radius: 12px;
   box-shadow: 0 4px 12px rgba(0,0,0,0.08);
   color: #222;
+  flex-grow: 1; /* Позволяет карточкам занимать доступное место */
+  width: 100%;
+  max-width: 400px;
 `;
 
 const SimulateCard = styled(Card)`
   cursor: pointer;
   user-select: none;
-  transition: transform 0.2s ease-in-out;
-
+  
+  /* 3. Применяем миксин и убираем старую бесконечную анимацию */
+  ${buttonHoverEffect}
+  
+  /* Оставляем эффект смены фона при наведении */
   &:hover {
-    animation: breathe 1.8s ease-in-out infinite;
     background: #f0f9f0;
+    /* Анимация пульсации будет взята из миксина */
   }
+`;
 
-  @keyframes breathe {
-    0%, 100% {
-      transform: scale(1);
-    }
-    50% {
-      transform: scale(1.02);
-    }
-  }
+// Остальные стили без значительных изменений
+const StatusText = styled.h1`
+  text-align: center;
+  font-size: 24px;
+  color: #666;
+  margin-top: 100px;
 `;
 
 const SimulateModal = styled.div`

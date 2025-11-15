@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
-import styled, { keyframes } from 'styled-components';
+import styled, { keyframes, css } from 'styled-components'; // <-- Добавили 'css'
 import { Canvas } from '@react-three/fiber';
 import { useNavigate } from 'react-router-dom';
 import { AvatarModel } from '../components/AvatarModel';
@@ -24,10 +24,10 @@ const StatusScreen = styled.div`
   align-items: center;
   width: 100vw;
   height: 100vh;
-  font-family: 'Segoe UI', sans-serif;
   font-size: 24px;
   color: #555;
   background-color: #fff;
+  font-family: 'Segoe UI', sans-serif;
 `;
 
 export default function Home() {
@@ -38,10 +38,8 @@ export default function Home() {
   const [isSessionActive, setIsSessionActive] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
   const [selectorVisible, setSelectorVisible] = useState(false);
   const [teamMood, setTeamMood] = useState<null | ReturnType<typeof calcTeamMood>>(null);
-
   const [isZoomedIn, setIsZoomedIn] = useState(false);
   const cameraInitializedRef = useRef(false);
 
@@ -55,12 +53,14 @@ export default function Home() {
       try {
         setIsLoading(true);
         const data = await getTeamPulse();
+
         const formattedEmployees: Employee[] = data.employees.map((emp, index) => ({
-          id: emp.token,
-          token: emp.token,
+          id: emp.telegram_id,
+          token: emp.telegram_id,
           risk: emp.risk_probability,
           name: `Сотрудник #${index + 1}`,
         }));
+
         setEmployees(formattedEmployees);
         setError(null);
       } catch (e: any) {
@@ -124,16 +124,9 @@ export default function Home() {
 
   const calcTeamMood = (team: Employee[]) => {
     if (team.length === 0) {
-      return {
-        color: '#ccc',
-        msg: 'Нет данных о команде',
-        file: 'calm.mp3',
-        risk: 0,
-      };
+      return { color: '#ccc', msg: 'Нет данных о команде', file: 'calm.mp3', risk: 0 };
     }
-
     const avg = team.reduce((s, e) => s + e.risk, 0) / team.length;
-
     if (avg < 0.35)
       return { color: '#2ecc71', msg: 'Команда в хорошем настроении 🌿', file: 'calm.mp3', risk: avg };
     if (avg < 0.7)
@@ -144,39 +137,18 @@ export default function Home() {
   const playTeamMoodMelody = async () => {
     const mood = calcTeamMood(employees);
     setTeamMood(mood);
-
     await Tone.start();
-
     const minFreq = 130;
     const maxFreq = 700;
     const freq = minFreq + (maxFreq - minFreq) * mood.risk;
-
     const synth = new Tone.Synth({
-      oscillator: {
-        type: 'sine',
-      },
-      envelope: {
-        attack: 2,
-        decay: 1.5,
-        sustain: 0.7,
-        release: 4,
-      },
+      oscillator: { type: 'sine' },
+      envelope: { attack: 2, decay: 1.5, sustain: 0.7, release: 4 },
     });
-
-    // 🎛 Реверберация
-    const reverb = new Tone.Reverb({
-      decay: 5,
-      wet: 0.7,
-    }).toDestination();
-
-    await reverb.generate(); // ждать генерации reverb
-
+    const reverb = new Tone.Reverb({ decay: 5, wet: 0.7 }).toDestination();
+    await reverb.generate();
     synth.connect(reverb);
-
-    // 🎹 Воспроизводим звук
     synth.triggerAttackRelease(freq, '8n');
-
-    // ⏱ Убрать баннер чуть позже окончания звучания
     setTimeout(() => setTeamMood(null), 6000);
   };
 
@@ -186,7 +158,9 @@ export default function Home() {
   return (
     <AppWrapper>
       <Logo>EchoAI</Logo>
-      <NavBtn onClick={() => navigate('/dashboard')}>📊 Перейти в дашборд</NavBtn>
+      <DashboardButton onClick={() => navigate('/dashboard')}>
+        Дашборд
+      </DashboardButton>
 
       <CanvasContainer>
         <Canvas shadows camera={{ position: [0, 3, 8], fov: 45 }} onPointerMissed={handlePointerMissed}>
@@ -198,10 +172,7 @@ export default function Home() {
             shadow-mapSize-width={1024}
             shadow-mapSize-height={1024}
           />
-
           <CameraController zoomIn={isZoomedIn} />
-
-          {/* model */}
           <AvatarModel
             color={modelColor}
             onClick={handleAvatarClick}
@@ -210,8 +181,6 @@ export default function Home() {
             }}
             isSessionActive={isSessionActive}
           />
-
-          {/* пол */}
           <mesh receiveShadow rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]}>
             <planeGeometry args={[30, 30]} />
             <shadowMaterial opacity={0.2} />
@@ -231,13 +200,21 @@ export default function Home() {
           <EmployeeCard
             employee={selectedEmployee}
             onDetailsClick={() =>
-              navigate(`/dashboard/employee/${selectedEmployee.token}`)
+              navigate(`/dashboard/employee/${selectedEmployee.token}`, {
+                state: { employeeName: selectedEmployee.name },
+              })
             }
           />
         </RightPanel>
       )}
 
-      <PlayButton onClick={playTeamMoodMelody}>🎶 Мелодия команды</PlayButton>
+      <PlayButton onClick={playTeamMoodMelody} title="Мелодия команды">
+        <Equalizer>
+          <Bar delay="0s" />
+          <Bar delay="0.2s" />
+          <Bar delay="0.4s" />
+        </Equalizer>
+      </PlayButton>
 
       {teamMood && (
         <MoodBanner style={{ backgroundColor: teamMood.color }}>
@@ -250,6 +227,39 @@ export default function Home() {
     </AppWrapper>
   );
 }
+
+// --- СТИЛИ ---
+
+// 1. Анимация для одного "пульса"
+const pulseOnce = keyframes`
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.07); /* Пик увеличения */
+  }
+  100% {
+    transform: scale(1);
+  }
+`;
+
+// 2. Переиспользуемый миксин для эффекта наведения на кнопки
+const buttonHoverEffect = css`
+  /* Плавный переход для возврата в исходное состояние и для :active */
+  transition: transform 0.2s ease-out;
+
+  &:hover {
+    /* Применяем нашу одноразовую анимацию при наведении */
+    animation: ${pulseOnce} 0.4s ease-in-out;
+  }
+
+  &:active {
+    /* Дополнительный эффект при нажатии */
+    transform: scale(0.98);
+    transition: transform 0.1s; /* Быстрый отклик на клик */
+  }
+`;
+
 
 const AppWrapper = styled.div`
   width: 100vw;
@@ -269,22 +279,33 @@ const Logo = styled.h1`
   z-index: 10;
 `;
 
-const NavBtn = styled.button`
+const gradientShift = keyframes`
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+`;
+
+const DashboardButton = styled.button`
   position: absolute;
   top: 24px;
   right: 30px;
   z-index: 10;
-  background: #2c3e50;
-  color: white;
-  padding: 10px 16px;
-  border-radius: 8px;
+
+  padding: 10px 22px;
   border: none;
-  font-size: 15px;
+  border-radius: 100px;
+  font-size: 14px;
+  font-weight: 600;
   cursor: pointer;
-  transition: background-color 0.2s ease;
-  &:hover {
-    background: #34495e;
-  }
+  color: white;
+
+  background: linear-gradient(45deg, #7c5bff, #00bbe4, #17a000);
+  background-size: 300% 300%;
+  animation: ${gradientShift} 6s ease infinite;
+  box-shadow: 0 0 15px rgba(124, 91, 255, 0.4);
+
+  /* Применяем новый эффект */
+  ${buttonHoverEffect}
 `;
 
 const CanvasContainer = styled.div`
@@ -294,7 +315,6 @@ const CanvasContainer = styled.div`
   width: 100%;
   height: 100%;
   z-index: 1;
-  transition: all 0.5s ease;
 `;
 
 const fadeIn = keyframes`
@@ -333,18 +353,51 @@ const RightPanel = styled.div<{ visible: boolean }>`
 const PlayButton = styled.button`
   position: absolute;
   bottom: 30px;
-  left: 30px;
-  z-index: 10;
-  padding: 12px 20px;
-  border-radius: 10px;
+  right: 30px;
+  z-index: 20;
+  width: 64px;
+  height: 64px;
   border: none;
-  background: #444;
-  color: white;
-  font-size: 16px;
+  background: #222;
+  border-radius: 50%;
   cursor: pointer;
-  transition: background 0.2s;
+  box-shadow: 0 0 20px rgba(0, 255, 180, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+
   &:hover {
-    background: #333;
+    background: #111;
+  }
+
+  /* Применяем новый эффект */
+  ${buttonHoverEffect}
+`;
+
+const Equalizer = styled.div`
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 24px;
+  width: 20px;
+`;
+
+const Bar = styled.div<{ delay: string }>`
+  width: 4px;
+  height: 100%;
+  background: linear-gradient(180deg, #00ffe0, #a566ff, #00ffe0);
+  animation: bounce 1s infinite;
+  animation-delay: ${p => p.delay};
+  border-radius: 2px;
+
+  @keyframes bounce {
+    0%, 100% {
+      transform: scaleY(1);
+    }
+    50% {
+      transform: scaleY(0.3);
+    }
   }
 `;
 
@@ -363,7 +416,7 @@ const MoodBanner = styled.div`
   font-size: 16px;
   z-index: 20;
 
-  background: #000; // будет переопределяться через style={{ backgroundColor }}
+  background: #000;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
   animation: ${fadeIn} 0.5s ease-out;
 `;

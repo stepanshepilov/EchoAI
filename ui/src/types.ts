@@ -1,4 +1,5 @@
 export interface Employee {
+  id: string;
   token: string;
   name: string;
   risk: number;

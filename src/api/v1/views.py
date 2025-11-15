@@ -11,9 +11,9 @@ from collections import Counter
 from src.db.models import BurnoutPrediction, EmployeeFeatures, Employee, DialogueAnalysis, DialogueSession
 from src.db.session import get_db
 
-from .models import TeamPulseResponse, EmployeePulse, ExplanationResponse
+from .models import TeamPulseResponse, EmployeePulse, ExplanationResponse, ChatMessage, ChatRequest, ChatResponse
 from src.ai_services.prediction_service import prediction_service
-from src.ai_services.base import AiHelper
+from src.ai_services.base import AiHelper, ChatLM
 from src.db.repo import SQLiteRepository
 
 # Раскомментировать, когда FeatureService будет реализован
@@ -399,3 +399,37 @@ async def get_llm_recommendation(db: AsyncSession = Depends(get_db)):
     except Exception as e:
         logger.error(f"Ошибка при работе AI-помощника: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Внутренняя ошибка сервера при получении рекомендации от AI.")
+
+
+@router.post("/llm_helper/chat", response_model=ChatResponse, summary="Интерактивный AI-чат")
+async def handle_chat_completion(request: ChatRequest):
+    """
+    Принимает историю сообщений и возвращает следующий ответ от LLM.
+    Поддерживает непрерывный диалог.
+    """
+    logger.info(f"Получен запрос в AI-чат. История содержит {len(request.history)} сообщений.")
+
+    try:
+        # 1. Инициализируем ChatLM, который предназначен для диалогов
+        chat_lm = AiHelper()
+
+        # 2. Конвертируем Pydantic модели в словари, которые ожидает ChatLM
+        # Pydantic v2 использует .model_dump(), если у вас v1, используйте .dict()
+        try:
+            conversation_history = [message.model_dump() for message in request.history]
+            print(conversation_history)
+        except AttributeError:
+            # Для Pydantic v1
+            conversation_history = [message.dict() for message in request.history]
+
+        # 3. Получаем ответ от языковой модели
+        logger.info("Отправка истории сообщений в ChatLM для генерации ответа.")
+        ai_response = await chat_lm.get_response(conversation_history)
+        logger.info("Ответ от ChatLM успешно получен.")
+
+        # 4. Возвращаем ответ в ожидаемом формате
+        return ChatResponse(response=ai_response)
+
+    except Exception as e:
+        logger.error(f"Ошибка при обработке чат-комплишена: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Внутренняя ошибка сервера при работе с AI-чатом.")

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
-import styled, { keyframes, css } from 'styled-components'; // <-- Добавили 'css'
+import styled, { keyframes, css } from 'styled-components';
 import { Canvas } from '@react-three/fiber';
 import { useNavigate } from 'react-router-dom';
 import { AvatarModel } from '../components/AvatarModel';
@@ -19,15 +19,9 @@ export interface Employee {
 }
 
 const StatusScreen = styled.div`
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  width: 100vw;
-  height: 100vh;
-  font-size: 24px;
-  color: #555;
-  background-color: #fff;
-  font-family: 'Segoe UI', sans-serif;
+  display: flex; justify-content: center; align-items: center;
+  width: 100vw; height: 100vh; font-size: 24px; color: #555;
+  background-color: #fff; font-family: 'Segoe UI', sans-serif;
 `;
 
 export default function Home() {
@@ -53,14 +47,12 @@ export default function Home() {
       try {
         setIsLoading(true);
         const data = await getTeamPulse();
-
         const formattedEmployees: Employee[] = data.employees.map((emp, index) => ({
           id: emp.telegram_id,
           token: emp.telegram_id,
           risk: emp.risk_probability,
           name: `Сотрудник #${index + 1}`,
         }));
-
         setEmployees(formattedEmployees);
         setError(null);
       } catch (e: any) {
@@ -165,20 +157,12 @@ export default function Home() {
       <CanvasContainer>
         <Canvas shadows camera={{ position: [0, 3, 8], fov: 45 }} onPointerMissed={handlePointerMissed}>
           <ambientLight intensity={0.4} />
-          <directionalLight
-            castShadow
-            position={[5, 10, 5]}
-            intensity={0.8}
-            shadow-mapSize-width={1024}
-            shadow-mapSize-height={1024}
-          />
+          <directionalLight castShadow position={[5, 10, 5]} intensity={0.8} shadow-mapSize-width={1024} shadow-mapSize-height={1024} />
           <CameraController zoomIn={isZoomedIn} />
           <AvatarModel
             color={modelColor}
             onClick={handleAvatarClick}
-            onCenterComputed={() => {
-              cameraInitializedRef.current = true;
-            }}
+            onCenterComputed={() => { cameraInitializedRef.current = true; }}
             isSessionActive={isSessionActive}
           />
           <mesh receiveShadow rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]}>
@@ -190,8 +174,10 @@ export default function Home() {
 
       {selectorVisible && (
         <Modal visible={selectorVisible}>
-          <h3 style={{ color: '#222' }}>Выбери сотрудника:</h3>
-          <EmployeeSelector employees={employees} onSelect={handleSelect} />
+          <h3 style={{ color: '#222', flexShrink: 0 }}>Выбери сотрудника:</h3>
+          <ScrollableContainer>
+            <EmployeeSelector employees={employees} onSelect={handleSelect} />
+          </ScrollableContainer>
         </Modal>
       )}
 
@@ -219,108 +205,27 @@ export default function Home() {
       {teamMood && (
         <MoodBanner style={{ backgroundColor: teamMood.color }}>
           <h3>{teamMood.msg}</h3>
-          <p>
-            Средний риск: <strong>{Math.round(teamMood.risk * 100)}%</strong>
-          </p>
+          <p>Средний риск: <strong>{Math.round(teamMood.risk * 100)}%</strong></p>
         </MoodBanner>
       )}
     </AppWrapper>
   );
 }
 
-// --- СТИЛИ ---
-
-// 1. Анимация для одного "пульса"
-const pulseOnce = keyframes`
-  0% {
-    transform: scale(1);
-  }
-  50% {
-    transform: scale(1.07); /* Пик увеличения */
-  }
-  100% {
-    transform: scale(1);
-  }
-`;
-
-// 2. Переиспользуемый миксин для эффекта наведения на кнопки
-const buttonHoverEffect = css`
-  /* Плавный переход для возврата в исходное состояние и для :active */
-  transition: transform 0.2s ease-out;
-
-  &:hover {
-    /* Применяем нашу одноразовую анимацию при наведении */
-    animation: ${pulseOnce} 0.4s ease-in-out;
-  }
-
-  &:active {
-    /* Дополнительный эффект при нажатии */
-    transform: scale(0.98);
-    transition: transform 0.1s; /* Быстрый отклик на клик */
-  }
-`;
-
-
-const AppWrapper = styled.div`
-  width: 100vw;
-  height: 100vh;
-  position: relative;
-  background-color: #fff;
-  font-family: 'Segoe UI', sans-serif;
-`;
-
-const Logo = styled.h1`
-  position: absolute;
-  top: 24px;
-  left: 30px;
-  font-size: 24px;
-  font-weight: 600;
-  color: #222;
-  z-index: 10;
-`;
-
-const gradientShift = keyframes`
-  0% { background-position: 0% 50%; }
-  50% { background-position: 100% 50%; }
-  100% { background-position: 0% 50%; }
-`;
-
+const pulseOnce = keyframes`0%{transform:scale(1)}50%{transform:scale(1.07)}100%{transform:scale(1)}`;
+const buttonHoverEffect = css`transition:transform .2s ease-out;&:hover{animation:${pulseOnce} .4s ease-in-out}&:active{transform:scale(.98);transition:transform .1s}`;
+const AppWrapper = styled.div`width:100vw;height:100vh;position:relative;background-color:#fff;font-family:'Segoe UI',sans-serif`;
+const Logo = styled.h1`position:absolute;top:24px;left:30px;font-size:24px;font-weight:600;color:#222;z-index:10`;
+const gradientShift = keyframes`0%{background-position:0 50%}50%{background-position:100% 50%}100%{background-position:0 50%}`;
 const DashboardButton = styled.button`
-  position: absolute;
-  top: 24px;
-  right: 30px;
-  z-index: 10;
-
-  padding: 10px 22px;
-  border: none;
-  border-radius: 100px;
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-  color: white;
-
-  background: linear-gradient(45deg, #7c5bff, #00bbe4, #17a000);
-  background-size: 300% 300%;
-  animation: ${gradientShift} 6s ease infinite;
-  box-shadow: 0 0 15px rgba(124, 91, 255, 0.4);
-
-  /* Применяем новый эффект */
+  position:absolute;top:24px;right:30px;z-index:10;padding:10px 22px;border:none;border-radius:100px;
+  font-size:14px;font-weight:600;cursor:pointer;color:#fff;
+  background:linear-gradient(45deg,#7c5bff,#00bbe4,#17a000);background-size:300% 300%;
+  animation:${gradientShift} 6s ease infinite;box-shadow:0 0 15px rgba(124,91,255,.4);
   ${buttonHoverEffect}
 `;
-
-const CanvasContainer = styled.div`
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  z-index: 1;
-`;
-
-const fadeIn = keyframes`
-  from { opacity: 0; transform: translateY(20px); }
-  to { opacity: 1; transform: translateY(0); }
-`;
+const CanvasContainer = styled.div`position:absolute;top:0;left:0;width:100%;height:100%;z-index:1`;
+const fadeIn = keyframes`from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}`;
 
 const Modal = styled.div<{ visible: boolean }>`
   position: absolute;
@@ -333,90 +238,54 @@ const Modal = styled.div<{ visible: boolean }>`
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
   z-index: 5;
 
+  display: flex;
+  flex-direction: column;
+  max-height: 400px; /* Ограничиваем максимальную высоту */
+
   opacity: ${({ visible }) => (visible ? 1 : 0)};
   visibility: ${({ visible }) => (visible ? 'visible' : 'hidden')};
   transform: translate(-50%, -50%) scale(${({ visible }) => (visible ? 1 : 0.95)});
   transition: opacity 0.4s ease, transform 0.4s ease;
 `;
 
-const RightPanel = styled.div<{ visible: boolean }>`
-  position: absolute;
-  top: 90px;
-  right: 40px;
-  z-index: 10;
+const ScrollableContainer = styled.div`
+  overflow-y: auto; /* Включаем вертикальный скролл, если контент не помещается */
+  margin-right: -10px; /* Сдвигаем, чтобы скрыть стандартный скроллбар */
+  padding-right: 10px; /* Возвращаем отступ, чтобы текст не прилипал к краю */
 
-  opacity: ${({ visible }) => (visible ? 1 : 0)};
-  transform: translateX(${({ visible }) => (visible ? '0' : '20px')});
-  transition: opacity 0.4s ease, transform 0.4s ease;
+  /* Стилизация скроллбара для красоты */
+  &::-webkit-scrollbar {
+    width: 6px;
+  }
+  &::-webkit-scrollbar-thumb {
+    background-color: #ccc;
+    border-radius: 3px;
+  }
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
 `;
 
+const RightPanel = styled.div<{ visible: boolean }>`
+  position:absolute;top:90px;right:40px;z-index:10;
+  opacity:${({visible})=>visible?1:0};transform:translateX(${({visible})=>visible?"0":"20px"});
+  transition:opacity .4s ease,transform .4s ease
+`;
 const PlayButton = styled.button`
-  position: absolute;
-  bottom: 30px;
-  right: 30px;
-  z-index: 20;
-  width: 64px;
-  height: 64px;
-  border: none;
-  background: #222;
-  border-radius: 50%;
-  cursor: pointer;
-  box-shadow: 0 0 20px rgba(0, 255, 180, 0.3);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-
-  &:hover {
-    background: #111;
-  }
-
-  /* Применяем новый эффект */
+  position:absolute;bottom:30px;right:30px;z-index:20;width:64px;height:64px;border:none;
+  background:#222;border-radius:50%;cursor:pointer;box-shadow:0 0 20px rgba(0,255,180,.3);
+  display:flex;align-items:center;justify-content:center;padding:0;
+  &:hover{background:#111}
   ${buttonHoverEffect}
 `;
-
-const Equalizer = styled.div`
-  display: flex;
-  align-items: flex-end;
-  gap: 3px;
-  height: 24px;
-  width: 20px;
+const Equalizer = styled.div`display:flex;align-items:flex-end;gap:3px;height:24px;width:20px`;
+const Bar = styled.div<{delay:string}>`
+  width:4px;height:100%;background:linear-gradient(180deg,#00ffe0,#a566ff,#00ffe0);
+  animation:bounce 1s infinite;animation-delay:${p=>p.delay};border-radius:2px;
+  @keyframes bounce{0%,100%{transform:scaleY(1)}50%{transform:scaleY(.3)}}
 `;
-
-const Bar = styled.div<{ delay: string }>`
-  width: 4px;
-  height: 100%;
-  background: linear-gradient(180deg, #00ffe0, #a566ff, #00ffe0);
-  animation: bounce 1s infinite;
-  animation-delay: ${p => p.delay};
-  border-radius: 2px;
-
-  @keyframes bounce {
-    0%, 100% {
-      transform: scaleY(1);
-    }
-    50% {
-      transform: scaleY(0.3);
-    }
-  }
-`;
-
 const MoodBanner = styled.div`
-  position: fixed;
-  bottom: 30px;
-  left: 0;
-  right: 0;
-  margin: 0 auto;
-  width: fit-content;
-
-  padding: 18px 24px;
-  border-radius: 16px;
-  color: white;
-  text-align: center;
-  font-size: 16px;
-  z-index: 20;
-
-  background: #000;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
-  animation: ${fadeIn} 0.5s ease-out;
+  position:fixed;bottom:30px;left:0;right:0;margin:0 auto;width:fit-content;padding:18px 24px;
+  border-radius:16px;color:#fff;text-align:center;font-size:16px;z-index:20;
+  background:#000;box-shadow:0 10px 30px rgba(0,0,0,.25);animation:${fadeIn} .5s ease-out
 `;

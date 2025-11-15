@@ -49,7 +49,7 @@ export const TeamMoodPlayer: React.FC<Props> = ({ employees }) => {
     setTimeout(() => {
       setMood(null);
       setIsPlaying(false);
-    }, 12000); // длительность музыки
+    }, 12000);
   };
 
   return (

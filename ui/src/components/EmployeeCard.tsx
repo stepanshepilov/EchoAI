@@ -1,7 +1,6 @@
 import React from 'react';
 import styled from 'styled-components';
 
-// 1. (РЕКОМЕНДАЦИЯ) Обновляем интерфейс для соответствия данным из Home.tsx
 export interface Employee {
   id: string;
   token: string;
@@ -9,13 +8,11 @@ export interface Employee {
   risk: number;
 }
 
-// 2. Добавляем onDetailsClick в интерфейс Props
 interface Props {
   employee: Employee;
   onDetailsClick: () => void;
 }
 
-// 3. Принимаем onDetailsClick в компоненте
 export const EmployeeCard: React.FC<Props> = ({ employee, onDetailsClick }) => {
   const color = getColorByRisk(employee.risk);
 
@@ -25,8 +22,6 @@ export const EmployeeCard: React.FC<Props> = ({ employee, onDetailsClick }) => {
       <RiskIndicator>
         Риск выгорания: <strong>{Math.round(employee.risk * 100)}%</strong>
       </RiskIndicator>
-      
-      {/* 4. Добавляем кнопку и привязываем к ней onDetailsClick */}
       <DetailsButton onClick={onDetailsClick}>
         Посмотреть детали
       </DetailsButton>
@@ -34,12 +29,10 @@ export const EmployeeCard: React.FC<Props> = ({ employee, onDetailsClick }) => {
   );
 };
 
-// --- Вспомогательные функции и стили (без изменений, кроме добавления кнопки) ---
-
 function getColorByRisk(risk: number): string {
-  if (risk < 0.35) return '#2ecc71'; // Green
-  if (risk < 0.7) return '#f1c40f'; // Yellow
-  return '#e74c3c'; // Red
+  if (risk < 0.35) return '#2ecc71';
+  if (risk < 0.7) return '#f1c40f';
+  return '#e74c3c';
 }
 
 const Card = styled.div`
@@ -69,7 +62,6 @@ const RiskIndicator = styled.p`
   }
 `;
 
-// 5. Стили для новой кнопки
 const DetailsButton = styled.button`
   background-color: #34495e;
   color: white;

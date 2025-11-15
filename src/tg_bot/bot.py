@@ -21,12 +21,12 @@ import logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-#from src.ai_services.whisper_service.speech_to_text import transcribe_audio
+from src.ai_services.whisper_service.speech_to_text import transcribe_audio
 from src.ai_services.base import ChatLM
 from src.settings import settings
 from src.db.repo import SQLiteRepository
 from src.db.session import AsyncSessionLocal
-from src.tg_bot.ws_service import ws_notifier
+from src.tg_bot.ws_service import ws_notifier 
 from src.ai_services.analyzer.analyzer_service import analyze_user_session
 from src.ai_services.prompts.questions import QUESTIONS, ANSWER_OPTIONS
 
@@ -157,7 +157,7 @@ async def show_authenticated_menu(message: Message, user_name: str, state: State
 
 # /start
 @dp.message(CommandStart(), StateFilter('*'))
-@dp.message(StateFilter(None))
+# @dp.message(StateFilter(None))
 async def restart(message: Message, state: FSMContext):
     await state.clear()
     if await state.get_state() is not None:        
@@ -168,14 +168,15 @@ async def restart(message: Message, state: FSMContext):
 
 # /finish
 @dp.message(Command("finish"), StateFilter('*'))
-@dp.message(StateFilter(None))
 async def logout(message: Message, state: FSMContext):
     await state.clear()
     if await state.get_state() is not None:
         logger.info(f'Пользователь {message.from_user.id} вышел из системы')
         await message.answer("Сессия завершена. Нажмите /start, чтобы начать новую", reply_markup=ReplyKeyboardRemove())
-        await analyze_user_session(message.from_user.id)
-    else: await message.answer("Нажмите /start, чтобы начать сессию.")
+    
+    else:
+        await message.answer("Нажмите /start, чтобы начать сессию.")
+    await analyze_user_session(message.from_user.id)
 
 
 # ==== ЛОГИКА ОПРОСА ====
@@ -186,18 +187,12 @@ async def start_survey(message: Message, state: FSMContext, is_new_user: bool = 
     await state.set_state(UserStates.in_survey)
     
     # --- Определяем, какой набор вопросов использовать ---
-    if is_new_user:
-        logger.info(f"Запуск стандартного опроса для нового пользователя {message.chat.id}")
-        questions_to_ask = QUESTIONS # Берем стандартный набор из файла
-    else:
-        # Для старого пользователя получаем персонализированный набор
+    if not is_new_user:
         questions_to_ask = await get_QUESTIONS(telegram_id=message.chat.id)
 
-    if not questions_to_ask:
-        logger.warning(f"Для пользователя {message.chat.id} не найдено вопросов для опроса. Завершение.")
-        await state.set_state(UserStates.authenticated)
-        await message.answer("На данный момент для вас нет доступных опросов. Попробуйте позже.")
-        return
+    if is_new_user or not questions_to_ask : 
+        logger.info(f"Запуск стандартного опроса для пользователя {message.chat.id}")
+        questions_to_ask = {key: QUESTIONS[key] for key in [1, 8, 9, 10, 12]}
 
     question_order = list(questions_to_ask.keys())
     
@@ -217,7 +212,6 @@ async def start_survey(message: Message, state: FSMContext, is_new_user: bool = 
     await send_question(message, state)
 
 
-# ### ИЗМЕНЕНО: send_question теперь берет вопросы из FSM ###
 async def send_question(message: Message, state: FSMContext):
     """
     Формирует и отправляет текущий вопрос опроса.
@@ -366,23 +360,23 @@ async def handle_text_message(message: Message, state: FSMContext):
 
 
 # Голосовые сообщения (voice)
-# @dp.message(UserStates.authenticated, F.voice)
-# async def handle_voice(message: Message, state: FSMContext):
-#     # генерируем имя файла .ogg
-#     file_name = f"{uuid.uuid4()}.mp3"
-#     dst_path = TEMP_AUDIO_DIR / file_name
-#
-#     await bot.download(message.voice, destination=dst_path)
-#     logger.info(f"Аудиофайл сохранён: {dst_path.as_posix()}")
-#
-#     result = await transcribe_audio(str(dst_path))
-#
-#     if "text" in result:
-#         await bot.send_chat_action(chat_id=message.chat.id, action=ChatAction.TYPING)
-#         ai_response_text = await get_ai_answer(result["text"], message.chat.id, state)
-#         await message.answer(ai_response_text)
-#     else:
-#         await message.answer("Не удалось распознать речь 😔")
+@dp.message(UserStates.authenticated, F.voice)
+async def handle_voice(message: Message, state: FSMContext):
+    # генерируем имя файла .ogg
+    file_name = f"{uuid.uuid4()}.mp3"
+    dst_path = TEMP_AUDIO_DIR / file_name
+
+    await bot.download(message.voice, destination=dst_path)
+    logger.info(f"Аудиофайл сохранён: {dst_path.as_posix()}")
+    
+    result = await transcribe_audio(str(dst_path))
+
+    if "text" in result:
+        await bot.send_chat_action(chat_id=message.chat.id, action=ChatAction.TYPING)
+        ai_response_text = await get_ai_answer(result["text"], message.chat.id, state)
+        await message.answer(ai_response_text)  
+    else:
+        await message.answer("Не удалось распознать речь 😔")
 
 
 
@@ -421,6 +415,10 @@ async def entry_point_handler(message: Message, state: FSMContext):
         await start_survey(message, state, is_new_user=True)
 
         # await ask_about_cdek_id(message)
+
+ # /dialogue
+# async def start_dialoge_with_ai():
+
 
 
 #  Функция, которую будет выполнять фоновый тайме
@@ -505,14 +503,14 @@ async def main():
 
     await set_main_menu(bot)
     await bot.delete_webhook(drop_pending_updates=True)
-    # await dp.start_polling(bot)
+    await dp.start_polling(bot)
     
-    try:
-        await ws_notifier.start()
-        await dp.start_polling(bot)
-    finally:
-        await ws_notifier.stop()
-        await bot.session.close()
+    # try:
+    #     await ws_notifier.start()
+    #     await dp.start_polling(bot)
+    # finally:
+    #     await ws_notifier.stop()
+    #     await bot.session.close() 
 
 
 if __name__ == "__main__":

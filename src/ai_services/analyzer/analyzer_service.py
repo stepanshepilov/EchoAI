@@ -3,6 +3,7 @@ from typing import Dict, Any
 from src.db.repo import SQLiteRepository
 from src.db.session import AsyncSessionLocal
 from src.ai_services.analyzer.nlp_analyzer import nlp_service
+from src.ai_services.prompts.questions import QUESTIONS
 
 logger = logging.getLogger(__name__)
 
@@ -42,14 +43,35 @@ async def analyze_user_session(telegram_id: int) -> Dict[str, Any]:
         if not messages:
             logger.warning(f"Сессия {session_id} пуста, анализ невозможен.")
             return {"error": "Сессия не содержит сообщений."}
-            
+        
         # Объединяем все сообщения в один большой текст для анализа
         full_dialogue_text = "\n".join(
             f"{msg['role']}: {msg['content']}" for msg in messages
         )
+        
+        last_survey = await repo.get_survey_result(employee_id=employee.id)
+        if not last_survey:
+            logger.warning(f"Результаты теста для пользоватя {employee.id} не найдены")
+            pass 
+        else:
+            logger.info(f"Найдена тст для: {telegram_id}")
+            survey_details = ["\n\nLast survey results:"]
+            for q_num, q_text in QUESTIONS.items():
+                answer = last_survey.get(f"q{q_num}")
+                if answer is not None:
+                    survey_details.append(f"- {q_text}: {answer}")
 
-        # print('\n\nfull_dialogue_text: ', full_dialogue_text)
+            if len(survey_details) > 1: 
+                full_dialogue_text += "\n".join(survey_details)
 
+            else:
+                logger.warning(f"Результаты опроса для пользователя {employee.id} не найдены")
+            
+
+    print('UUUUUUUUUUUUUUUUUUU', full_dialogue_text)
+
+
+        
     # 4. Передать текст в анализатор
     logger.info(f"Отправка текста сессии {session_id} на анализ в NLP сервис...")
     analysis_result = await nlp_service.analyze_sentiment(full_dialogue_text)

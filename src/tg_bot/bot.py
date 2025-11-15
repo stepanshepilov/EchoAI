@@ -4,6 +4,8 @@ import asyncio
 from pathlib import Path
 from typing import Callable, Dict, Any, Awaitable
 import time
+import pytz
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from aiogram import Bot, Dispatcher, F
 from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove, BotCommand, InlineKeyboardButton, InlineKeyboardMarkup, CallbackQuery
@@ -55,23 +57,6 @@ FSM_SURVEY_ANSWERS_KEY = 'survey_answers'
 FSM_SURVEY_QUESTION_ORDER_KEY = 'survey_question_order'
 FSM_SURVEY_CURRENT_INDEX_KEY = 'survey_current_index'
 FSM_SURVEY_QUESTIONS_KEY = 'survey_questions'
-
-
-# async def get_QUESTIONS(telegram_id: int) -> dict:
-#     """
-#     Имитирует запрос к внешней системе для получения персонализированного
-#     набора вопросов для существующего пользователя.
-#     Возвращает словарь формата {номер_вопроса: текст_вопроса}.
-#     """
-#     logger.info(f"Получение персонализированных вопросов для 'старого' пользователя {telegram_id}...")
-#     # В реальной жизни здесь будет http-запрос к вашему API.
-#     # Сейчас для примера вернем другой набор вопросов.
-#     await asyncio.sleep(0.5) # Имитация сетевой задержки
-#     return {
-#         2: "Чувство усталости или упадка сил в течение дня?",
-#         5: "Ощущение негативизма или цинизма, связанное с работой?",
-#         13: "Трудности с концентрацией внимания на рабочих задачах?",
-#     }
 
 
 # ==== ДЛЯ РАБОТЫ С БАЗАМИ ДАННЫХ ====
@@ -148,35 +133,56 @@ class UserStates(StatesGroup):
     in_survey = State() # Пользовать проходит опрос
 
 
-# ==== Приветствия ====
-async def show_authenticated_menu(message: Message, user_name: str, state: State):
-    await message.answer(
-        f"Добро пожаловать, {user_name}!",
-    )
-    await start_survey(message, state, is_new_user=False)
-
-
+# === Общие обработчики ===
 # /start
 @dp.message(CommandStart())
-async def restart(message: Message, state: FSMContext):
-    await state.clear()
+async def cmd_start(message: Message, state: FSMContext):
+    """Единственный обработчик /start, который решает, что делать с пользователем."""
+    
     if await state.get_state() is not None:        
         logger.info(f'Пользователь {message.from_user.id} вышел из системы')
         await analyze_user_session(message.from_user.id)
-    await entry_point_handler(message, state)
+
+    await state.clear() 
+
+    user = await get_db_user(message.from_user.id, message.from_user.full_name, state)
+    
+    if user:
+        # Пользователь уже есть в БД
+        logger.info(f"Вход для существующего пользователя {user['user_id']}")
+        await message.answer(f"С возвращением, {user['name']}! Готовим для вас небольшой опрос 📝")
+        is_new_user = False
+    else:
+        # Новый пользователь
+        logger.info(f"Новый пользователь {message.from_user.id}, запуск регистрации.")
+        await create_db_user(message.from_user.id, message.from_user.full_name, state)
+        await message.answer(f"Добро пожаловать, {message.from_user.full_name}!")
+        is_new_user = True
+
+    await start_survey(message, state, is_new_user=is_new_user)
 
 
 # /finish
 @dp.message(Command("finish"))
 async def logout(message: Message, state: FSMContext):
-    await state.clear()
     if await state.get_state() is not None:
         logger.info(f'Пользователь {message.from_user.id} вышел из системы')
         await message.answer("Сессия завершена. Нажмите /start, чтобы начать новую", reply_markup=ReplyKeyboardRemove())
-    
+        await analyze_user_session(message.from_user.id)
+        await state.clear()
     else:
+        logger.warning(f'Пользователь {message.from_user.id} пытался завершить несуществующую сессию.')
         await message.answer("Нажмите /start, чтобы начать сессию.")
-    await analyze_user_session(message.from_user.id)
+    
+    
+
+
+
+# Перехватываем все сообщения без состояния
+@dp.message(StateFilter(None))
+async def any_message_without_state(message: Message):
+    await message.answer("Для начала работы, пожалуйста, введите команду /start")
+
 
 
 # ==== ЛОГИКА ОПРОСА ====
@@ -277,10 +283,9 @@ async def survey_answer_handler(callback: CallbackQuery, state: FSMContext, bot:
         # Если да - завершаем опрос
         logger.info(f"Пользователь {callback.from_user.id} завершил опрос. Ответы: {answers}")
         await state.set_state(UserStates.authenticated) # Возвращаем в обычное состояние
-        # await set_authenticated_commands(bot) # Устанавливаем полное меню команд
         await callback.message.answer(
             "Спасибо за ваши ответы! Опрос завершен.\n"
-            "Используйте команду /dialogue, чтобы начать общение."
+            "Напишите что-нибудь, чтобы начать общение."
         )
         try:
             async with AsyncSessionLocal() as db_session:
@@ -384,45 +389,49 @@ async def handle_voice(message: Message, state: FSMContext):
 
 
 
-
-
-# Ловит /start и ЛЮБОЕ другое сообщение от пользователя без состояния
-@dp.message(StateFilter(None))
-@dp.message(~Command("finish"))
-async def entry_point_handler(message: Message, state: FSMContext):
-    # Сначала проверяем, не является ли это командой /start, которая требует особого поведения
-    if message.text == '/start':
-        await state.clear() # Полный сброс сессии и истории
-    
-    user = await get_db_user(message.from_user.id, message.from_user.full_name, state)
-    
-    if user:
-        # Пользователь найден (уже зарегистрирован)
-        logger.info(f"Вход для пользователя {user['user_id']}")
-        # await state.set_state(UserStates.authenticated)
-        # await start_survey(message, state, is_new_user=False)
-
-        
-        # Если это было /start, показываем приветствие
-        # if message.text == '/start':
-        await show_authenticated_menu(message, user["name"], state)
-        # elif message.voice:
-        #     await handle_voice(message, state)
-        # elif message.text:
-        #     await handle_text_message(message, state)
-            
-    else:
-        # Пользователь не найден, запускаем регистрацию
-        logger.info(f"Новый пользователь {message.from_user.id}, запуск регистрации.")
-        await create_db_user(message.from_user.id, message.from_user.full_name, state)
-        await message.answer(f"Добро пожаловать, {message.from_user.full_name}!",)
-        await start_survey(message, state, is_new_user=True)
-
-        # await ask_about_cdek_id(message)
-
  # /dialogue
 # async def start_dialoge_with_ai():
 
+
+# === Ежедневнная рассылка ===
+async def send_daily_initiation(bot: Bot):
+    """
+    Функция, которая будет запускаться по расписанию.
+    Она получает всех пользователей из БД и отправляет им сообщение.
+    """
+    logger.info("Запуск ежедневной рассылки...")
+    async with AsyncSessionLocal() as session:
+        repo = SQLiteRepository(session)
+        user_ids = await repo.get_all_active_users()
+
+    if not user_ids:
+        logger.info("В базе данных нет пользователей для рассылки.")
+        return
+
+    # Текст можно сделать более привлекательным
+    message_text = (
+        "👋 Привет! Время для нашего ежедневного чекапа.\n\n"
+        "Как вы себя чувствуете сегодня? Давайте пройдем короткий опрос, чтобы это выяснить. "
+        "Нажмите /start, чтобы начать."
+    )
+    
+    # Счётчики для статистики
+    sent_count = 0
+    failed_count = 0
+
+    for user_id in user_ids:
+        try:
+            await bot.send_message(user_id, message_text)
+            logger.info(f"Сообщение успешно отправлено пользователю {user_id}")
+            sent_count += 1
+        except Exception as e:
+            # Эта обработка важна: если один юзер заблокировал бота,
+            # рассылка для остальных не должна останавливаться.
+            logger.error(f"Не удалось отправить сообщение пользователю {user_id}: {e}")
+            failed_count += 1
+        await asyncio.sleep(0.1) # Небольшая задержка, чтобы не перегружать API Telegram
+
+    logger.info(f"Рассылка завершена. Отправлено: {sent_count}, Ошибок: {failed_count}")
 
 
 #  Функция, которую будет выполнять фоновый тайме
@@ -507,7 +516,28 @@ async def main():
 
     await set_main_menu(bot)
     await bot.delete_webhook(drop_pending_updates=True)
+
+
+        # Устанавливаем часовой пояс Москвы
+    moscow_tz = pytz.timezone('Europe/Moscow')
+    scheduler = AsyncIOScheduler(timezone=moscow_tz)
+
+    # Добавляем задачу: вызывать send_daily_initiation каждый день в 13:00
+    scheduler.add_job(
+        send_daily_initiation,
+        trigger='cron',
+        hour=13,
+        minute=42,
+        kwargs={'bot': bot}  # Передаем объект bot в нашу функцию
+    )
+    
+    # Запускаем планировщик
+    scheduler.start()
+    logger.info("Планировщик задач запущен.")
+
     await dp.start_polling(bot)
+
+
     
     # try:
     #     await ws_notifier.start()

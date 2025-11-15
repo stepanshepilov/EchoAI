@@ -308,3 +308,13 @@ class SQLiteRepository(BaseRepository):
         result = await self.session.execute(query)
         # Возвращаем список комментариев (строк)
         return list(result.scalars().all())
+    
+    
+    async def get_all_active_users(self) -> list[int]:
+        """
+        Возвращает список всех уникальных telegram_id из таблицы сотрудников.
+        """
+        stmt = select(Employee.telegram_id).distinct()
+        result = await self.session.execute(stmt)
+        # .scalars().all() вернет список значений из одного столбца
+        return result.scalars().all()

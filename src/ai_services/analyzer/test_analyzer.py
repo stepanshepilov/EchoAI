@@ -17,7 +17,7 @@ def _parse_indices_from_ai_response(response: str) -> List[int]:
     if not response:
         return []
     
-    indices = []
+    indices = [] 
     parts = response.split(',')
     for part in parts:
         try:

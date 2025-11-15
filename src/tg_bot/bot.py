@@ -91,7 +91,7 @@ async def get_db_user(telegram_id: int, full_name: str, state: FSMContext):
                 # Если в модели есть имя - берем его, иначе из Telegram
                 "name": employee_object.name or full_name,
             }
-    return None
+    return None 
 
 
 async def create_db_user(telegram_id: int, full_name: str, state: FSMContext, cdek_id: str = None):
@@ -281,7 +281,8 @@ async def survey_answer_handler(callback: CallbackQuery, state: FSMContext, bot:
     question_number = q_order[q_index]
     
     # 3. Записываем ответ в словарь
-    answers[question_number] = user_answer
+    russian_answer = ANSWER_OPTIONS.get(user_answer, user_answer)
+    answers[question_number] = russian_answer
     
     # 4. Передвигаем указатель на следующий вопрос
     next_index = q_index + 1
@@ -318,6 +319,7 @@ async def survey_answer_handler(callback: CallbackQuery, state: FSMContext, bot:
                 employee_id = employee.id
 
                 await repo.save_survey_result(employee_id=employee_id, answers=normalized_answers)
+                print(answers)
 
                 logger.info(
                     f"Результаты опроса {answers} для пользователя {callback.from_user.id} "
@@ -544,8 +546,8 @@ async def main():
     scheduler.add_job(
         send_daily_initiation,
         trigger='cron',
-        hour=13,
-        minute=42,
+        hour=19,
+        minute=55,
         kwargs={'bot': bot}  # Передаем объект bot в нашу функцию
     )
     
@@ -553,14 +555,8 @@ async def main():
     scheduler.start()
     logger.info("Планировщик задач запущен.")
 
-    # await dp.start_polling(bot)
+    await dp.start_polling(bot)
     
-    try:
-        await ws_notifier.start()
-        await dp.start_polling(bot)
-    finally:
-        await ws_notifier.stop()
-        await bot.session.close() 
 
 
 if __name__ == "__main__":

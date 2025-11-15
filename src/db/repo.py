@@ -268,6 +268,8 @@ class SQLiteRepository(BaseRepository):
             .limit(1)
         )
         return result.scalar_one_or_none()
+    
+    
     async def get_average_sentiment_for_period(self, start_date = None, end_date = None) -> Optional[float]:
         """
         Рассчитывает средний sentiment из DialogueAnalysis за ВСЁ ВРЕМЯ.

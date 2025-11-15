@@ -1,6 +1,7 @@
 import uuid
 import logging
 from abc import ABC, abstractmethod
+import json
 from typing import List, Dict, Any, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
@@ -143,27 +144,49 @@ class SQLiteRepository(BaseRepository):
         return [{"role": role, "content": content} for role, content in history] if history else None
 
     async def save_analysis(self, session_id: str, analysis_data: Dict[str, Any]) -> DialogueAnalysis:
+        """
+        Сохраняет или обновляет результаты анализа для сессии.
+        Сериализует поле 'comment' в JSON-строку перед сохранением.
+        """
         result = await self.session.execute(
             select(DialogueAnalysis).where(DialogueAnalysis.session_id == session_id)
         )
         existing_analysis = result.scalar_one_or_none()
+
+
+        # Извлекаем 'comment' из данных
+        comment_data = analysis_data.get('comment')
+        
+        # Проверяем, является ли comment_data списком или словарем.
+        if isinstance(comment_data, (list, dict)):
+            # Если да, преобразуем его в JSON-строку и ЗАМЕНЯЕМ значение в словаре analysis_data.
+            analysis_data['comment'] = json.dumps(comment_data, ensure_ascii=False)
+        # Если comment_data - это уже строка или None, ничего делать не нужно,
+        # так как оно уже в правильном формате.
+        
 
         if existing_analysis:
             logger.info(f"Обновление анализа для сессии {session_id}")
             stmt = (
                 update(DialogueAnalysis)
                 .where(DialogueAnalysis.session_id == session_id)
-                .values(**analysis_data)
+                .values(**analysis_data) # <-- Теперь здесь используется модифицированный словарь
             )
             await self.session.execute(stmt)
+            # Так как мы не меняли сам объект, а только данные в БД,
+            # можно просто вернуть existing_analysis, но refresh надежнее.
             analysis_obj = existing_analysis
         else:
             logger.info(f"Сохранение нового анализа для сессии {session_id}")
+            # <-- И здесь используется модифицированный словарь
             analysis_obj = DialogueAnalysis(session_id=session_id, **analysis_data)
             self.session.add(analysis_obj)
         
+        # commit() сохраняет все изменения (и INSERT, и UPDATE)
         await self.session.commit()
+        # refresh() обновит наш Python-объект данными из БД (на всякий случай)
         await self.session.refresh(analysis_obj)
+        
         return analysis_obj
     
 

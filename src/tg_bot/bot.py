@@ -157,8 +157,7 @@ async def show_authenticated_menu(message: Message, user_name: str, state: State
 
 
 # /start
-@dp.message(CommandStart(), StateFilter('*'))
-# @dp.message(StateFilter(None))
+@dp.message(CommandStart())
 async def restart(message: Message, state: FSMContext):
     await state.clear()
     if await state.get_state() is not None:        
@@ -168,7 +167,7 @@ async def restart(message: Message, state: FSMContext):
 
 
 # /finish
-@dp.message(Command("finish"), StateFilter('*'))
+@dp.message(Command("finish"))
 async def logout(message: Message, state: FSMContext):
     await state.clear()
     if await state.get_state() is not None:

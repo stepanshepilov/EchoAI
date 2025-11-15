@@ -1,33 +1,34 @@
-// src/components/CameraController.tsx
-import { useThree, useFrame } from '@react-three/fiber';
-import { Vector3 } from 'three';
-import { useRef, useEffect } from 'react';
+import { useFrame, useThree } from '@react-three/fiber';
 
-interface Props {
-  focusTarget: Vector3 | null;
-}
+type Props = {
+  zoomIn: boolean;
+};
 
-export function CameraController({ focusTarget }: Props) {
+export const CameraController = ({ zoomIn }: Props) => {
   const { camera } = useThree();
-  const defaultPos = new Vector3(0, 3, 8);
-  const targetPos = useRef<Vector3>(defaultPos.clone());
 
-  useEffect(() => {
-    if (focusTarget) {
-      targetPos.current = focusTarget.clone();
-    } else {
-      targetPos.current = defaultPos.clone();
-    }
-  }, [focusTarget]);
+  const target = {
+    y: zoomIn ? 2.5 : 3,
+    z: zoomIn ? 3.5 : 8
+  };
+
+  const speed = 0.08;
 
   useFrame(() => {
-    camera.position.lerp(targetPos.current, 0.1);
-    if (focusTarget) {
-      camera.lookAt(focusTarget);
+    // Z
+    if (Math.abs(camera.position.z - target.z) > 0.01) {
+      camera.position.z += (target.z - camera.position.z) * speed;
     } else {
-      camera.lookAt(0, 1.5, 0);
+      camera.position.z = target.z;
+    }
+
+    // Y
+    if (Math.abs(camera.position.y - target.y) > 0.01) {
+      camera.position.y += (target.y - camera.position.y) * speed;
+    } else {
+      camera.position.y = target.y;
     }
   });
 
   return null;
-}
+};

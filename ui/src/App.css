@@ -40,3 +40,13 @@
 .read-the-docs {
   color: #888;
 }
+
+:root {
+  --Background: #f5f8fe;
+  --Primary: #1ab248;
+  --Primary_Button: #1ab248;
+  --Primary_Button_Hover: #30cc5f;
+  --TextColor: #1a1a1a;
+  --CardBackground: #ffffff;
+  --Surface_Shadow: rgba(0, 0, 0, 0.08);
+}

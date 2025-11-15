@@ -10,6 +10,12 @@ class Employee(Base):
     telegram_id = Column(Integer, unique=True, index=True)
     name = Column(String, nullable=True) 
     cdek_id = Column(String, nullable=True, unique=True)
+    features = relationship(
+        "EmployeeFeatures",
+        back_populates="employee",
+        cascade="all, delete-orphan",
+        order_by="desc(EmployeeFeatures.created_at)"
+    )
     # Здесь будут другие поля, которые мы получим от организаторов
 
     dialogue_sessions = relationship("DialogueSession", back_populates="employee", cascade="all, delete-orphan")
@@ -130,7 +136,6 @@ class EmployeeFeatures(Base):
     tasks_completed_last_365d = Column(Integer)
     tasks_failed_last_365d = Column(Integer)
 
-    # --- Фичи по отсутствиям ---
     sick_leave_count_last_30d = Column(Integer)
     short_sick_leaves_count_last_30d = Column(Integer)
     total_sick_days_last_30d = Column(Integer)
@@ -142,11 +147,9 @@ class EmployeeFeatures(Base):
     total_sick_days_last_365d = Column(Integer)
     days_since_last_vacation = Column(Integer)
 
-    # --- Фичи из диалогов ---
     avg_sentiment_last_30d = Column(Float)
     avg_sentiment_last_90d = Column(Float)
     avg_sentiment_last_365d = Column(Float)
     sentiment_trend_last_90d = Column(Float)
 
-    # Связь обратно к сотруднику
     employee = relationship("Employee", back_populates="features")

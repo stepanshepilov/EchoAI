@@ -148,6 +148,8 @@ class SQLiteRepository(BaseRepository):
         Сохраняет или обновляет результаты анализа для сессии.
         Сериализует поле 'comment' в JSON-строку перед сохранением.
         """
+        # if isinstance(comment_data, (list, dict)):
+        #     analysis_data['comment'] = json.dumps(comment_data, ensure_ascii=False)
         result = await self.session.execute(
             select(DialogueAnalysis).where(DialogueAnalysis.session_id == session_id)
         )

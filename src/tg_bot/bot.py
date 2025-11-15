@@ -193,7 +193,30 @@ async def logout(message: Message, state: FSMContext):
         await message.answer("Нажмите /start, чтобы начать сессию.")
     
     
+@dp.message(Command("dialogue"))
+async def start_dialogue(message: Message, state: FSMContext):
+    current_state = await state.get_state()
+    
+    # Проверяем, не находится ли пользователь уже в диалоге
+    if current_state == UserStates.authenticated:
+        await message.answer("Я уже слушаю вас. Просто напишите или отправьте голосовое сообщение.")
+        return
 
+    user = await get_db_user(message.from_user.id, message.from_user.full_name, state)
+      
+    if not user: 
+        user = await create_db_user(message.from_user.id, message.from_user.full_name, state)
+    # Проверяем, прошел ли пользователь регистрацию/опрос
+    # (предполагаем, что session_id есть в FSM только у аутентифицированных)
+    # user_data = await state.get_data()
+    # if not user_data.get(FSM_SESSION_ID_KEY):
+    #     await message.answer("Пожалуйста, сначала пройдите первичную настройку с помощью команды /start.")
+    #     return
+
+    # Если все проверки пройдены, переключаем состояние и приглашаем к диалогу
+    await state.set_state(UserStates.authenticated)
+    logger.info(f"Пользователь {message.from_user.id} начал диалог с помощью команды /dialogue.")
+    await message.answer("Рад начать наш разговор. Что у вас на уме?")
 
 
 # Перехватываем все сообщения без состояния
@@ -527,6 +550,10 @@ async def set_main_menu(bot: Bot):
         BotCommand(
             command='/finish', 
             description='Завершить сессию 🔚'
+        ),
+        BotCommand(
+            command="/dialogue",
+            description="Начать диалог с Echo 🗨"
         )
     ]
     await bot.set_my_commands(main_menu_commands)

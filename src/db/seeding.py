@@ -194,7 +194,8 @@ async def seed_database():
             analysis = DialogueAnalysis(
                 session_id=session_id,
                 sentiment=-0.2 + idx * 0.1,
-                is_burnout_risk_detected=bool(idx % 2)
+                is_burnout_risk_detected=bool(idx % 2),
+                comment=MOCK_TOPICS[idx]
             )
             session.add(analysis)
             await session.commit()

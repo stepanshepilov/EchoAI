@@ -4,7 +4,7 @@ from abc import ABC, abstractmethod
 from typing import List, Dict, Any, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from sqlalchemy import update, desc
+from sqlalchemy import func, update, desc
 from src.db.models import Employee, DialogueSession, ChatMessage, DialogueAnalysis, SurveyResult, EmployeeFeatures
 
 logger = logging.getLogger(__name__)
@@ -245,3 +245,14 @@ class SQLiteRepository(BaseRepository):
             .limit(1)
         )
         return result.scalar_one_or_none()
+    async def get_average_sentiment_for_period(self, start_date = None, end_date = None) -> Optional[float]:
+        """
+        Рассчитывает средний sentiment из DialogueAnalysis за ВСЁ ВРЕМЯ.
+        Параметры start_date и end_date ИГНОРИРУЮТСЯ согласно требованию.
+        """
+        logger.info(f"Расчет среднего sentiment за все время.")
+        result = await self.session.execute(
+            select(func.avg(DialogueAnalysis.sentiment))
+        )
+        average_sentiment = result.scalar_one_or_none()
+        return average_sentiment

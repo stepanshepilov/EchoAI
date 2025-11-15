@@ -95,12 +95,22 @@ async def get_team_pulse(db: AsyncSession = Depends(get_db)):
                 risk_distribution["high"] += 1
 
         overall_score = total_risk_score / processed_employees_count if processed_employees_count > 0 else 0
-        # TODO: Заменить мок-динамику на реальный расчет
-        mock_dynamics = f"+{round(np.random.uniform(1, 9))}%"
+
+        average_sentiment_all_time = await repo.get_average_sentiment_for_period()
+
+        # Поле risk_dynamics_weekly теперь будет отображать это среднее значение, а не динамику.
+        # Это значение будет строкой.
+        if average_sentiment_all_time is not None:
+            # Форматируем значение, например, до 2 знаков после запятой
+            overall_sentiment_str = f"{average_sentiment_all_time:.2f}"
+        else:
+            # Значение по умолчанию, если анализов еще нет
+            overall_sentiment_str = "0.0"
+
 
         return TeamPulseResponse(
             overall_risk_score=overall_score,
-            risk_dynamics_weekly=mock_dynamics,
+            risk_dynamics_weekly=overall_sentiment_str,
             distribution=risk_distribution,
             employees=employee_pulses
         )

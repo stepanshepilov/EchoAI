@@ -4,6 +4,7 @@ import json
 from pydantic import BaseModel, Field, ValidationError 
 from ..prompts.nlp_analyzer import SYSTEM_PROMPT_ANALYZER, TOPICS_ANALAYZER_PROMPT
 from ..base import BaseLM
+from ..prompts.recommender_prompt import SYSTEM_PROMPT_FEEDBACK_GENERATOR
 
 logger = logging.getLogger(__name__)
 
@@ -98,5 +99,31 @@ class NlpService(BaseLM):
         except Exception as e:
             logger.error(f"Критическая ошибка при вызове LLM: {e}", exc_info=True)
             return {"error": "Внутренняя ошибка сервиса NLP."}
+        
+
+    async def generate_feedback_from_text(self, session_text: str) -> str:
+        """
+        Генерирует целостное сообщение с обратной связью напрямую из текста сессии.
+        """
+        system_prompt = SYSTEM_PROMPT_FEEDBACK_GENERATOR
+        user_prompt = session_text # Весь текст сессии передается как user_prompt
+
+        # Сообщение-заглушка на случай критической ошибки
+        fallback_message = "Спасибо за уделенное время! Пожалуйста, берегите себя и не забывайте отдыхать."
+        
+        try:
+            response = await self.client.chat.completions.create(
+                model="deepseek-chat", # Или ваша основная модель для генерации текста
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ],
+                temperature=0.75 # Температура выше для более творческого и "человечного" ответа
+            )
+            return response.choices[0].message.content
+
+        except Exception as e:
+            logger.error(f"Критическая ошибка при генерации прямой обратной связи: {e}", exc_info=True)
+            return fallback_message
 
 nlp_service = NlpService()

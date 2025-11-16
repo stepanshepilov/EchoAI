@@ -32,6 +32,7 @@ from src.tg_bot.ws_service import ws_notifier
 from src.ai_services.analyzer.analyzer_service import analyze_user_session
 from src.ai_services.prompts.questions import QUESTIONS, ANSWER_OPTIONS
 from src.ai_services.analyzer.test_analyzer import get_ai_recommended_questions
+from src.ai_services.analyzer.give_recommends import send_session_feedback
 
 # ==== Настройки ====
 AI = ChatLM()
@@ -174,17 +175,7 @@ async def logout(message: Message, state: FSMContext):
         logger.info(f'Пользователь {message.from_user.id} вышел из системы')
         await message.answer("Сессия завершена. Нажмите /start, чтобы начать новую", reply_markup=ReplyKeyboardRemove())
         
-        user_data = await state.get_data()
-        session_id = user_data.get(FSM_SESSION_ID_KEY)
-        if session_id: # Отправляем, только если есть ID сессии
-            await ws_notifier.send({
-                    "user_id": message.from_user.id,
-                    "event": "session_ended",
-                    "session_id": session_id,
-                    "reason": "command_finish" # Добавляем причину завершения
-                })
-
-        
+        await send_session_feedback(telegram_id=message.from_user.id,bot=bot)
         
         await analyze_user_session(message.from_user.id)
         await state.clear()

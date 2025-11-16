@@ -19,6 +19,32 @@ from src.db.repo import SQLiteRepository
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
+FEATURE_TRANSLATION = {
+    'employee_id': 'Идентификатор сотрудника',
+    'age': 'Возраст',
+    'gender': 'Пол',
+    'tenure_months': 'Стаж работы (месяцев)',
+    'tasks_completed_last_30d': 'Завершено задач за 30 дней',
+    'tasks_failed_last_30d': 'Провалено задач за 30 дней',
+    'tasks_completed_last_90d': 'Завершено задач за 90 дней',
+    'tasks_failed_last_90d': 'Провалено задач за 90 дней',
+    'tasks_completed_last_365d': 'Завершено задач за 365 дней',
+    'tasks_failed_last_365d': 'Провалено задач за 365 дней',
+    'sick_leave_count_last_30d': 'Кол-во больничных за 30 дней',
+    'short_sick_leaves_count_last_30d': 'Кол-во коротких больничных за 30 дней',
+    'total_sick_days_last_30d': 'Всего дней на больничном за 30 дней',
+    'sick_leave_count_last_90d': 'Кол-во больничных за 90 дней',
+    'short_sick_leaves_count_last_90d': 'Кол-во коротких больничных за 90 дней',
+    'total_sick_days_last_90d': 'Всего дней на больничном за 90 дней',
+    'sick_leave_count_last_365d': 'Кол-во больничных за 365 дней',
+    'short_sick_leaves_count_last_365d': 'Кол-во коротких больничных за 365 дней',
+    'total_sick_days_last_365d': 'Всего дней на больничном за 365 дней',
+    'days_since_last_vacation': 'Дней с последнего отпуска',
+    'avg_sentiment_last_30d': 'Средний сентимент за 30 дней',
+    'avg_sentiment_last_90d': 'Средний сентимент за 90 дней',
+    'avg_sentiment_last_365d': 'Средний сентимент за 365 дней',
+    'sentiment_trend_last_90d': 'Тренд сентимента за 90 дней'
+}
 
 def convert_numpy_types(obj):
     if isinstance(obj, dict):
@@ -209,6 +235,11 @@ async def get_prediction_explanation(
                 status_code=503,
                 detail="Сервис предсказаний временно недоступен."
             )
+
+        if 'shap_explanation' in explanation_data and 'factors' in explanation_data['shap_explanation']:
+            for factor in explanation_data['shap_explanation']['factors']:
+                # Используем .get() чтобы избежать ошибок, если фича не найдена в словаре
+                factor['feature'] = FEATURE_TRANSLATION.get(factor['feature'], factor['feature'])
 
         explanation_data = convert_numpy_types(explanation_data)
         return ExplanationResponse(telegram_id=str(telegram_id), **explanation_data)

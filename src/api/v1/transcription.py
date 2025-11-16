@@ -5,6 +5,7 @@ from ...settings import settings
 
 logger = logging.getLogger(__name__)
 
+
 class TranscriptionService:
     _model = None
 
@@ -29,5 +30,6 @@ class TranscriptionService:
         except Exception as e:
             logger.error(f"Ошибка при транскрибации файла {file_path}: {e}", exc_info=True)
             raise
+
 
 transcription_service = TranscriptionService()

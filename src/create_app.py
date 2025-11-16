@@ -14,18 +14,20 @@ logger = logging.getLogger(__name__)
 
 os.makedirs("temp_audio", exist_ok=True)
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Поднимаю Backend, инициализирую БД")
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-    
+
     logger.info("База данных успешно инициализирована.")
-    
+
     yield
-    
+
     logger.info("Приложение останавливается...")
     await engine.dispose()
+
 
 def create_app() -> FastAPI:
     app = FastAPI(
@@ -40,7 +42,7 @@ def create_app() -> FastAPI:
     app.include_router(api_router)
 
     origins = [
-        "http://localhost:8080",  # <-- ИСПРАВЛЕНО
+        "http://localhost:8080",
         "http://localhost",
         "http://127.0.0.1:8080",
     ]
@@ -52,5 +54,5 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
-    
+
     return app

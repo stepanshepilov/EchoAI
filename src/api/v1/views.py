@@ -15,7 +15,6 @@ from src.ai_services.prediction_service import prediction_service
 from src.ai_services.base import AiHelper
 from src.db.repo import SQLiteRepository
 
-
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
@@ -46,6 +45,7 @@ FEATURE_TRANSLATION = {
     'sentiment_trend_last_90d': 'Тренд сентимента за 90 дней'
 }
 
+
 def convert_numpy_types(obj):
     if isinstance(obj, dict):
         return {k: convert_numpy_types(v) for k, v in obj.items()}
@@ -58,7 +58,6 @@ def convert_numpy_types(obj):
 
 
 def features_to_dataframe(features_obj: EmployeeFeatures) -> pd.DataFrame:
-    """Конвертирует объект EmployeeFeatures в pd.DataFrame для модели."""
     if not features_obj:
         return pd.DataFrame()
     feature_dict = {c.name: [getattr(features_obj, c.name)] for c in features_obj.__table__.columns if
@@ -73,11 +72,11 @@ def features_to_dataframe(features_obj: EmployeeFeatures) -> pd.DataFrame:
 )
 async def get_team_pulse(db: AsyncSession = Depends(get_db)):
     repo = SQLiteRepository(db)
-    
+
     try:
         all_employees = await repo.get_all_employees()
         logger.info(f"Получено сотрудников из БД: {len(all_employees)}")
-        
+
         if not all_employees:
             raise HTTPException(status_code=404, detail="Сотрудники не найдены.")
 
@@ -95,7 +94,7 @@ async def get_team_pulse(db: AsyncSession = Depends(get_db)):
                     f"Используем дефолтные значения."
                 )
                 probability = 0.5
-                
+
                 last_session = await repo.get_last_session_for_employee(employee.id)
                 if last_session:
                     result = await db.execute(
@@ -106,18 +105,18 @@ async def get_team_pulse(db: AsyncSession = Depends(get_db)):
                     sentiment_trend = analysis.sentiment if analysis and analysis.sentiment is not None else 0.0
                 else:
                     sentiment_trend = 0.0
-                
+
             else:
                 features = features_to_dataframe(latest_features)
-                
+
                 if features.empty:
                     probability = 0.5
                     sentiment_trend = 0.0
                 else:
                     probability = await prediction_service.predict_proba(features)
                     sentiment_trend = (
-                        latest_features.sentiment_trend_last_90d 
-                        if latest_features.sentiment_trend_last_90d is not None 
+                        latest_features.sentiment_trend_last_90d
+                        if latest_features.sentiment_trend_last_90d is not None
                         else 0.0
                     )
 
@@ -139,15 +138,15 @@ async def get_team_pulse(db: AsyncSession = Depends(get_db)):
                 risk_distribution["high"] += 1
 
         overall_score = (
-            total_risk_score / processed_employees_count 
-            if processed_employees_count > 0 
+            total_risk_score / processed_employees_count
+            if processed_employees_count > 0
             else 0
         )
-        
+
         average_sentiment_all_time = await repo.get_average_sentiment_for_period()
         overall_sentiment_str = (
-            f"{average_sentiment_all_time:.2f}" 
-            if average_sentiment_all_time is not None 
+            f"{average_sentiment_all_time:.2f}"
+            if average_sentiment_all_time is not None
             else "0.0"
         )
 
@@ -171,13 +170,13 @@ async def get_team_pulse(db: AsyncSession = Depends(get_db)):
     summary="Объяснение Риска"
 )
 async def get_prediction_explanation(
-    telegram_id: int,
-    db: AsyncSession = Depends(get_db)
+        telegram_id: int,
+        db: AsyncSession = Depends(get_db)
 ):
     try:
         repo = SQLiteRepository(db)
         employee = await repo.get_employee(telegram_id=telegram_id)
-        
+
         if not employee:
             raise HTTPException(
                 status_code=404,
@@ -185,7 +184,7 @@ async def get_prediction_explanation(
             )
 
         latest_features = await repo.get_latest_features(employee.id)
-        
+
         if not latest_features:
             logger.warning(
                 f"⚠️ Фичи для сотрудника {telegram_id} отсутствуют. "
@@ -207,7 +206,7 @@ async def get_prediction_explanation(
             )
 
         features = features_to_dataframe(latest_features)
-        
+
         if features.empty:
             logger.warning(
                 f"⚠️ DataFrame фичей для сотрудника {telegram_id} пустой. "
@@ -229,7 +228,7 @@ async def get_prediction_explanation(
             )
 
         explanation_data = await prediction_service.explain(features)
-        
+
         if "error" in explanation_data:
             raise HTTPException(
                 status_code=503,
@@ -238,7 +237,6 @@ async def get_prediction_explanation(
 
         if 'shap_explanation' in explanation_data and 'factors' in explanation_data['shap_explanation']:
             for factor in explanation_data['shap_explanation']['factors']:
-                # Используем .get() чтобы избежать ошибок, если фича не найдена в словаре
                 factor['feature'] = FEATURE_TRANSLATION.get(factor['feature'], factor['feature'])
 
         explanation_data = convert_numpy_types(explanation_data)
@@ -297,13 +295,13 @@ async def websocket_endpoint(websocket: WebSocket):
 
 @router.get("/dashboard/employees/{telegram_id}/topics")
 async def get_employee_topics(
-    telegram_id: int,
-    limit: int = Query(10, ge=1, le=50, description="Максимум топиков"),
-    db: AsyncSession = Depends(get_db)
+        telegram_id: int,
+        limit: int = Query(10, ge=1, le=50, description="Максимум топиков"),
+        db: AsyncSession = Depends(get_db)
 ):
     repo = SQLiteRepository(db)
     employee = await repo.get_employee(telegram_id=telegram_id)
-    
+
     if not employee:
         raise HTTPException(
             status_code=404,
@@ -333,11 +331,11 @@ async def get_employee_topics(
 
     try:
         import json
-        
+
         if analysis.comment:
             try:
                 parsed_comment = json.loads(analysis.comment)
-            
+
                 if isinstance(parsed_comment, list):
                     topics = parsed_comment
                 elif isinstance(parsed_comment, dict):
@@ -359,7 +357,7 @@ async def get_employee_topics(
                 }]
         else:
             topics = []
-        
+
         formatted_topics = []
         for topic in topics:
             if isinstance(topic, dict):
@@ -376,14 +374,14 @@ async def get_employee_topics(
                     "mentions": 1,
                     "examples": [topic]
                 })
-        
+
         return {
             "telegram_id": telegram_id,
             "topics": formatted_topics,
             "sentiment": analysis.sentiment,
             "is_burnout_risk_detected": analysis.is_burnout_risk_detected
         }
-        
+
     except Exception as e:
         logger.error(f"Ошибка при парсинге топиков для {telegram_id}: {e}", exc_info=True)
 
@@ -431,17 +429,13 @@ async def get_prediction(
     summary="Что если: Отправить в отпуск"
 )
 async def get_what_if_vacation_prediction(
-    telegram_id: int,
-    db: AsyncSession = Depends(get_db)
+        telegram_id: int,
+        db: AsyncSession = Depends(get_db)
 ):
-    """
-    Рассчитывает "что если" сценарий: какой будет вероятность выгорания,
-    если сбросить счетчик дней с последнего отпуска до нуля.
-    """
     logger.info(f"Запуск 'что если' сценария для telegram_id {telegram_id}")
     repo = SQLiteRepository(db)
     employee = await repo.get_employee(telegram_id=telegram_id)
-    
+
     if not employee:
         raise HTTPException(
             status_code=404,
@@ -450,24 +444,22 @@ async def get_what_if_vacation_prediction(
 
     try:
         latest_features = await repo.get_latest_features(employee.id)
-        
-        # ✅ ИЗМЕНЕНО: Если нет фичей - возвращаем дефолтные значения
+
         if not latest_features:
             logger.warning(
                 f"⚠️ Фичи для сотрудника {telegram_id} отсутствуют. "
                 f"Возвращаем оценочные значения."
             )
-            # Оценочные значения: отпуск снижает риск примерно на 20%
+
             return {
                 "telegram_id": telegram_id,
-                "original_probability": 0.5,      # Средний риск
-                "what_if_vacation_probability": 0.3,  # После отпуска ниже
-                "probability_change": -0.2        # Изменение на -20%
+                "original_probability": 0.5,
+                "what_if_vacation_probability": 0.3,
+                "probability_change": -0.2
             }
 
-        # Текущая вероятность
         original_features_df = features_to_dataframe(latest_features)
-        
+
         if original_features_df.empty:
             logger.warning(
                 f"⚠️ DataFrame фичей для сотрудника {telegram_id} пустой. "
@@ -479,13 +471,11 @@ async def get_what_if_vacation_prediction(
                 "what_if_vacation_probability": 0.3,
                 "probability_change": -0.2
             }
-        
-        # ✅ Есть фичи - считаем нормально
+
         original_probability = await prediction_service.predict_proba(original_features_df)
 
-        # Симуляция отпуска
         what_if_features_df = features_to_dataframe(latest_features)
-        
+
         if 'days_since_last_vacation' in what_if_features_df.columns:
             logger.info("Изменение 'days_since_last_vacation' на 0 для 'что если' сценария.")
             what_if_features_df['days_since_last_vacation'] = 0
@@ -583,6 +573,7 @@ async def get_llm_recommendation(db: AsyncSession = Depends(get_db)):
     except Exception as e:
         logger.error(f"Ошибка при работе AI-помощника: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Внутренняя ошибка сервера при получении рекомендации от AI.")
+
 
 @router.post("/llm_helper/chat", response_model=ChatResponse, summary="Интерактивный AI-чат")
 async def handle_chat_completion(request: ChatRequest):

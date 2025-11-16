@@ -5,7 +5,8 @@ import logging
 from datetime import datetime, timedelta
 from sqlalchemy.ext.asyncio import create_async_engine
 from src.settings import settings
-from src.db.models import Base, Employee, DialogueSession, ChatMessage, DialogueAnalysis, BurnoutPrediction, SurveyResult, EmployeeFeatures
+from src.db.models import Base, Employee, DialogueSession, ChatMessage, DialogueAnalysis, BurnoutPrediction, \
+    SurveyResult, EmployeeFeatures
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -55,14 +56,12 @@ MOCK_FEATURES = [
     }
 ]
 
-# Для краткости, заполним все ответы одинаковыми значениями
 SURVEY_ANSWERS = {f'q{i}': 'Никогда' for i in range(1, 23)}
 MOCK_SURVEYS = [
     {'employee_id': 1, **SURVEY_ANSWERS, 'q1': 'Очень часто', 'q5': 'Часто'},
     {'employee_id': 2, **SURVEY_ANSWERS, 'q2': 'Иногда', 'q8': 'Редко'},
     {'employee_id': 3, **SURVEY_ANSWERS, 'q3': 'Почти никогда', 'q12': 'Иногда'}
 ]
-
 
 MOCK_TOPICS = [
     [

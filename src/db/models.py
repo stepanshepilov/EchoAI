@@ -4,11 +4,12 @@ import datetime
 
 Base = declarative_base()
 
+
 class Employee(Base):
     __tablename__ = 'employees'
     id = Column(Integer, primary_key=True, index=True)
     telegram_id = Column(Integer, unique=True, index=True)
-    name = Column(String, nullable=True) 
+    name = Column(String, nullable=True)
     cdek_id = Column(String, nullable=True, unique=True)
     features = relationship(
         "EmployeeFeatures",
@@ -16,35 +17,23 @@ class Employee(Base):
         cascade="all, delete-orphan",
         order_by="desc(EmployeeFeatures.created_at)"
     )
-    # Здесь будут другие поля, которые мы получим от организаторов
 
     dialogue_sessions = relationship("DialogueSession", back_populates="employee", cascade="all, delete-orphan")
 
-    # survey_result = relationship(
-    #     "SurveyResult",
-    #     back_populates="employee",
-    #     uselist=False,
-    #     cascade="all, delete-orphan"
-    # )
-
-    # burnout_predictions = relationship(
-    #     "BurnoutPrediction",
-    #     back_populates="employee",
-    #     cascade="all, delete-orphan"
-    # )
-
     def __repr__(self):
         return f"<Employee(id={self.id}, telegram_id={self.telegram_id})>"
+
 
 class DialogueSession(Base):
     __tablename__ = 'dialogue_sessions'
     id = Column(String, primary_key=True, index=True)
     employee_id = Column(Integer, ForeignKey('employees.id'))
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
-    
+
     employee = relationship("Employee", back_populates="dialogue_sessions")
     messages = relationship("ChatMessage", back_populates="session", cascade="all, delete-orphan")
     analysis = relationship("DialogueAnalysis", back_populates="session", uselist=False, cascade="all, delete-orphan")
+
 
 class ChatMessage(Base):
     __tablename__ = 'chat_messages'
@@ -55,7 +44,8 @@ class ChatMessage(Base):
     timestamp = Column(DateTime, default=datetime.datetime.utcnow)
 
     session = relationship("DialogueSession", back_populates="messages")
-    
+
+
 class DialogueAnalysis(Base):
     __tablename__ = 'dialogue_analysis'
     id = Column(Integer, primary_key=True)
@@ -63,7 +53,7 @@ class DialogueAnalysis(Base):
     sentiment = Column(Float)
     is_burnout_risk_detected = Column(Boolean)
     comment = Column(String, nullable=True)
-    
+
     session = relationship("DialogueSession", back_populates="analysis")
 
 
@@ -75,7 +65,6 @@ class BurnoutPrediction(Base):
     probability_of_burnout = Column(Float, nullable=False)
     shap_explanations = Column(JSON, nullable=False)
 
-
     employee = relationship("Employee", backref="burnout_predictions")
 
 
@@ -84,24 +73,23 @@ class SurveyResult(Base):
 
     id = Column(Integer, primary_key=True)
 
-    # связь с сотрудником
     employee_id = Column(
         Integer,
         ForeignKey("employees.id"),
         nullable=False,
-        unique=True, 
+        unique=True,
         index=True
     )
 
-    q1  = Column(String, nullable=True)
-    q2  = Column(String, nullable=True)
-    q3  = Column(String, nullable=True)
-    q4  = Column(String, nullable=True)
-    q5  = Column(String, nullable=True)
-    q6  = Column(String, nullable=True)
-    q7  = Column(String, nullable=True)
-    q8  = Column(String, nullable=True)
-    q9  = Column(String, nullable=True)
+    q1 = Column(String, nullable=True)
+    q2 = Column(String, nullable=True)
+    q3 = Column(String, nullable=True)
+    q4 = Column(String, nullable=True)
+    q5 = Column(String, nullable=True)
+    q6 = Column(String, nullable=True)
+    q7 = Column(String, nullable=True)
+    q8 = Column(String, nullable=True)
+    q9 = Column(String, nullable=True)
     q10 = Column(String, nullable=True)
     q11 = Column(String, nullable=True)
     q12 = Column(String, nullable=True)

@@ -10,6 +10,7 @@ from src.db.models import Employee, DialogueSession, ChatMessage, DialogueAnalys
 
 logger = logging.getLogger(__name__)
 
+
 class BaseRepository(ABC):
     @abstractmethod
     async def get_or_create_employee(self, telegram_id: int) -> Employee:
@@ -17,7 +18,7 @@ class BaseRepository(ABC):
 
     @abstractmethod
     async def get_employee(self, telegram_id: int) -> Employee:
-        pass    
+        pass
 
     @abstractmethod
     async def create_employee(self, telegram_id: int) -> Employee:
@@ -39,7 +40,7 @@ class BaseRepository(ABC):
     async def save_analysis(self, session_id: str, analysis_data: Dict[str, Any]) -> DialogueAnalysis:
         pass
 
-    @abstractmethod 
+    @abstractmethod
     async def get_last_session_for_employee(self, employee_id: int) -> Optional[DialogueSession]:
         pass
 
@@ -50,7 +51,6 @@ class BaseRepository(ABC):
     @abstractmethod
     async def get_survey_result(self, employee_id: int) -> Optional[SurveyResult]:
         pass
-
 
 
 class InMemoryRepository(BaseRepository):
@@ -80,6 +80,7 @@ class InMemoryRepository(BaseRepository):
     def get_analysis(self, session_id: str) -> Optional[Dict[str, Any]]:
         return self._analyses.get(session_id)
 
+
 class SQLiteRepository(BaseRepository):
     def __init__(self, session: AsyncSession):
         self.session = session
@@ -93,7 +94,7 @@ class SQLiteRepository(BaseRepository):
             select(Employee).where(Employee.telegram_id == telegram_id)
         )
         employee = result.scalar_one_or_none()
-        
+
         if not employee:
             logger.info(f"Создание нового сотрудника с telegram_id: {telegram_id}")
             employee = Employee(telegram_id=telegram_id)
@@ -101,7 +102,7 @@ class SQLiteRepository(BaseRepository):
             await self.session.commit()
             await self.session.refresh(employee)
         return employee
-    
+
     async def get_employee(self, telegram_id: int, name: str = None, cdek_id: str = None) -> Employee:
         result = await self.session.execute(
             select(Employee).where(Employee.telegram_id == telegram_id)
@@ -144,73 +145,50 @@ class SQLiteRepository(BaseRepository):
         return [{"role": role, "content": content} for role, content in history] if history else None
 
     async def save_analysis(self, session_id: str, analysis_data: Dict[str, Any]) -> DialogueAnalysis:
-        """
-        Сохраняет или обновляет результаты анализа для сессии.
-        Сериализует поле 'comment' в JSON-строку перед сохранением.
-        """
-        # if isinstance(comment_data, (list, dict)):
-        #     analysis_data['comment'] = json.dumps(comment_data, ensure_ascii=False)
+
         result = await self.session.execute(
             select(DialogueAnalysis).where(DialogueAnalysis.session_id == session_id)
         )
         existing_analysis = result.scalar_one_or_none()
 
-
-        # Извлекаем 'comment' из данных
         comment_data = analysis_data.get('comment')
-        
-        # Проверяем, является ли comment_data списком или словарем.
+
         if isinstance(comment_data, (list, dict)):
-            # Если да, преобразуем его в JSON-строку и ЗАМЕНЯЕМ значение в словаре analysis_data.
             analysis_data['comment'] = json.dumps(comment_data, ensure_ascii=False)
-        # Если comment_data - это уже строка или None, ничего делать не нужно,
-        # так как оно уже в правильном формате.
-        
 
         if existing_analysis:
             logger.info(f"Обновление анализа для сессии {session_id}")
             stmt = (
                 update(DialogueAnalysis)
                 .where(DialogueAnalysis.session_id == session_id)
-                .values(**analysis_data) # <-- Теперь здесь используется модифицированный словарь
+                .values(**analysis_data)
             )
             await self.session.execute(stmt)
-            # Так как мы не меняли сам объект, а только данные в БД,
-            # можно просто вернуть existing_analysis, но refresh надежнее.
+
             analysis_obj = existing_analysis
         else:
             logger.info(f"Сохранение нового анализа для сессии {session_id}")
-            # <-- И здесь используется модифицированный словарь
+
             analysis_obj = DialogueAnalysis(session_id=session_id, **analysis_data)
             self.session.add(analysis_obj)
-        
-        # commit() сохраняет все изменения (и INSERT, и UPDATE)
+
         await self.session.commit()
-        # refresh() обновит наш Python-объект данными из БД (на всякий случай)
+
         await self.session.refresh(analysis_obj)
-        
+
         return analysis_obj
-    
 
     async def get_last_session_for_employee(self, employee_id: int) -> Optional[DialogueSession]:
-        """
-        Находит последнюю сессию для сотрудника, сортируя по дате создания.
-        """
         logger.info(f"Поиск последней сессии для сотрудника с ID: {employee_id}")
         result = await self.session.execute(
             select(DialogueSession)
             .where(DialogueSession.employee_id == employee_id)
-            .order_by(desc(DialogueSession.created_at)) # Сортируем по убыванию даты
-            .limit(1) # Берем только первую (самую свежую) запись
+            .order_by(desc(DialogueSession.created_at))
+            .limit(1)
         )
         return result.scalar_one_or_none()
-    
-    
+
     async def save_survey_result(self, employee_id: int, answers: Dict[str, str]) -> SurveyResult:
-        """
-        answers = {"q1": "text", "q5": "text", ...} — остальные становятся NULL
-        """
-        # ищем текущие результаты
         result = await self.session.execute(
             select(SurveyResult).where(SurveyResult.employee_id == employee_id)
         )
@@ -219,15 +197,12 @@ class SQLiteRepository(BaseRepository):
         if survey is None:
             survey = SurveyResult(employee_id=employee_id)
 
-        # список всех колонок q1..q22
         question_fields = [f"q{i}" for i in range(1, 23)]
 
         for field in question_fields:
-            # если ключ есть — обновляем
             if field in answers:
                 setattr(survey, field, answers[field])
             else:
-                # нет в answers — ставим NULL
                 setattr(survey, field, None)
 
         self.session.add(survey)
@@ -235,8 +210,6 @@ class SQLiteRepository(BaseRepository):
         await self.session.refresh(survey)
         logger.info(f"Сохранены результаты опроса для сотрудника {employee_id}")
         return survey
-
-
 
     async def get_survey_result(self, employee_id: int) -> Optional[Dict[str, Any]]:
         result = await self.session.execute(
@@ -259,9 +232,7 @@ class SQLiteRepository(BaseRepository):
         return clean_data
 
     async def get_latest_features(self, employee_id: int) -> Optional[EmployeeFeatures]:
-        """
-        Находит самый свежий набор фичей для сотрудника.
-        """
+
         logger.info(f"Поиск последнего набора фичей для сотрудника с ID: {employee_id}")
         result = await self.session.execute(
             select(EmployeeFeatures)
@@ -270,13 +241,9 @@ class SQLiteRepository(BaseRepository):
             .limit(1)
         )
         return result.scalar_one_or_none()
-    
-    
-    async def get_average_sentiment_for_period(self, start_date = None, end_date = None) -> Optional[float]:
-        """
-        Рассчитывает средний sentiment из DialogueAnalysis за ВСЁ ВРЕМЯ.
-        Параметры start_date и end_date ИГНОРИРУЮТСЯ согласно требованию.
-        """
+
+    async def get_average_sentiment_for_period(self, start_date=None, end_date=None) -> Optional[float]:
+
         logger.info(f"Расчет среднего sentiment за все время.")
         result = await self.session.execute(
             select(func.avg(DialogueAnalysis.sentiment))
@@ -285,13 +252,9 @@ class SQLiteRepository(BaseRepository):
         return average_sentiment
 
     async def get_all_latest_analysis_comments(self) -> List[str]:
-        """
-        Получает самый свежий комментарий из DialogueAnalysis для КАЖДОГО сотрудника.
-        Использует оконную функцию для эффективности.
-        """
+
         logger.info("Получение всех последних комментариев анализа для всех сотрудников")
 
-        # Подзапрос, который ранжирует сессии каждого сотрудника по дате (самые новые получают ранг 1)
         subquery = (
             select(
                 DialogueAnalysis.comment,
@@ -306,19 +269,12 @@ class SQLiteRepository(BaseRepository):
             .subquery()
         )
 
-        # Основной запрос, который выбирает только те комментарии, где ранг равен 1
         query = select(subquery.c.comment).where(subquery.c.rn == 1)
 
         result = await self.session.execute(query)
-        # Возвращаем список комментариев (строк)
         return list(result.scalars().all())
-    
-    
+
     async def get_all_active_users(self) -> list[int]:
-        """
-        Возвращает список всех уникальных telegram_id из таблицы сотрудников.
-        """
         stmt = select(Employee.telegram_id).distinct()
         result = await self.session.execute(stmt)
-        # .scalars().all() вернет список значений из одного столбца
         return result.scalars().all()

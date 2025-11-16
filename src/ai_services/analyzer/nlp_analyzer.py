@@ -1,21 +1,22 @@
 import logging
 from typing import Dict, Any, List
 import json
-from pydantic import BaseModel, Field, ValidationError 
+from pydantic import BaseModel, Field, ValidationError
 from ..prompts.nlp_analyzer import SYSTEM_PROMPT_ANALYZER, TOPICS_ANALAYZER_PROMPT
 from ..base import BaseLM
 from ..prompts.recommender_prompt import SYSTEM_PROMPT_FEEDBACK_GENERATOR
 
 logger = logging.getLogger(__name__)
 
+
 class SentimentAnalysisResponse(BaseModel):
     sentiment: float = Field(
-        ..., 
+        ...,
         description="Эмоциональный тон по шкале от -1.0 (крайне негативный, выгорание) до 1.0 (позитивный, энергия).",
-        ge=-1.0, 
+        ge=-1.0,
         le=1.0
     )
-    is_burnout_risk_detected : bool = Field(
+    is_burnout_risk_detected: bool = Field(
         ...,
         description="Флаг, указывающий на прямые или косвенные признаки выгорания в тексте (True/False)."
     )
@@ -29,8 +30,10 @@ class Topic(BaseModel):
     importance: float
     examples: List[str]
 
+
 class StructuredTopicsResponse(BaseModel):
     comment: List[Topic] = Field(..., description="Список выявленных тем и проблем.")
+
 
 class NlpService(BaseLM):
     def __init__(self):
@@ -42,7 +45,7 @@ class NlpService(BaseLM):
 
         try:
             response = await self.client.chat.completions.create(
-                model="deepseek-chat", 
+                model="deepseek-chat",
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}
@@ -52,9 +55,9 @@ class NlpService(BaseLM):
             )
 
             response_content = response.choices[0].message.content
-            
+
             validated_data = SentimentAnalysisResponse.model_validate_json(response_content)
-            
+
             return validated_data.model_dump()
 
         except ValidationError as e:
@@ -63,21 +66,15 @@ class NlpService(BaseLM):
         except Exception as e:
             logger.error(f"Критическая ошибка при анализе текста LLM: {e}", exc_info=True)
             return {"error": "Внутренняя ошибка сервиса NLP."}
-        
-        
 
     async def analyze_topics(self, text: str) -> Dict[str, Any]:
-        """
-        Анализирует текст и возвращает ТОЛЬКО структурированный список тем 
-        под ключом 'comment'. Вся логика находится внутри этой функции.
-        """
         system_prompt = TOPICS_ANALAYZER_PROMPT
         user_prompt = f"Проанализируй следующий текст и верни результат в JSON формате, как указано в системных инструкциях: '{text}'"
-        
-        response_content = "" # Инициализируем переменную на случай ошибки до вызова API
+
+        response_content = ""
         try:
             response = await self.client.chat.completions.create(
-                model="deepseek-chat", 
+                model="deepseek-chat",
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}
@@ -86,44 +83,42 @@ class NlpService(BaseLM):
                 response_format={"type": "json_object"}
             )
             response_content = response.choices[0].message.content
-            
+
             validated_data = StructuredTopicsResponse.model_validate_json(response_content)
-            
+
             return validated_data.model_dump()
-    
+
         except (ValidationError, json.JSONDecodeError) as e:
             logger.error(f"Ошибка валидации или парсинга JSON от LLM: {e}. Ответ модели: '{response_content}'")
             return {"error": "Некорректный формат ответа от LLM."}
-        
-        # Эта ошибка сработает при проблемах с сетью, API и других непредвиденных сбоях
+
         except Exception as e:
             logger.error(f"Критическая ошибка при вызове LLM: {e}", exc_info=True)
             return {"error": "Внутренняя ошибка сервиса NLP."}
-        
 
     async def generate_feedback_from_text(self, session_text: str) -> str:
         """
         Генерирует целостное сообщение с обратной связью напрямую из текста сессии.
         """
         system_prompt = SYSTEM_PROMPT_FEEDBACK_GENERATOR
-        user_prompt = session_text # Весь текст сессии передается как user_prompt
+        user_prompt = session_text
 
-        # Сообщение-заглушка на случай критической ошибки
         fallback_message = "Спасибо за уделенное время! Пожалуйста, берегите себя и не забывайте отдыхать."
-        
+
         try:
             response = await self.client.chat.completions.create(
-                model="deepseek-chat", # Или ваша основная модель для генерации текста
+                model="deepseek-chat",
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}
                 ],
-                temperature=0.75 # Температура выше для более творческого и "человечного" ответа
+                temperature=0.75
             )
             return response.choices[0].message.content
 
         except Exception as e:
             logger.error(f"Критическая ошибка при генерации прямой обратной связи: {e}", exc_info=True)
             return fallback_message
+
 
 nlp_service = NlpService()

@@ -2,21 +2,18 @@ import logging
 from typing import Dict, Any
 from src.db.repo import SQLiteRepository
 from src.db.session import AsyncSessionLocal
-from src.ai_services.analyzer.nlp_analyzer import nlp_service # Убедитесь, что импорт правильный
+from src.ai_services.analyzer.nlp_analyzer import nlp_service
 from src.ai_services.prompts.questions import QUESTIONS
 
 logger = logging.getLogger(__name__)
 
+
 async def analyze_user_session(telegram_id: int) -> Dict[str, Any]:
-    """
-    Основная функция для анализа последней сессии пользователя.
-    """
     logger.info(f"Запуск анализа последней сессии для telegram_id: {telegram_id}")
 
     async with AsyncSessionLocal() as session:
         repo = SQLiteRepository(session)
 
-        # 1. Получаем пользователя и его последнюю сессию
         employee = await repo.get_employee(telegram_id=telegram_id)
         if not employee:
             logger.warning(f"Попытка анализа для несуществующего пользователя: {telegram_id}")
@@ -26,14 +23,13 @@ async def analyze_user_session(telegram_id: int) -> Dict[str, Any]:
         if not last_session:
             logger.warning(f"У пользователя {telegram_id} нет сессий для анализа.")
             return {"error": "Не найдено сессий для анализа."}
-        
+
         session_id = last_session.id
         logger.info(f"Найдена последняя сессия для анализа: {session_id}")
 
-        # 2. Безопасно собираем текст диалога и опроса
         full_dialogue_text = ""
         messages = await repo.get_conversation_history(session_id=session_id)
-        
+
         if messages:
             messages_to_process = messages[-20:]
             full_dialogue_text = "\n".join(
@@ -41,7 +37,7 @@ async def analyze_user_session(telegram_id: int) -> Dict[str, Any]:
             )
         else:
             logger.warning(f"Сессия {session_id} не содержит сообщений.")
-        
+
         last_survey = await repo.get_survey_result(employee_id=employee.id)
         if last_survey:
             survey_details = ["\n\nРезультаты последнего опроса:"]
@@ -54,14 +50,10 @@ async def analyze_user_session(telegram_id: int) -> Dict[str, Any]:
         else:
             logger.warning(f"Результаты опроса для пользователя {employee.id} не найдены.")
 
-        # Проверяем, есть ли вообще что анализировать
         if not full_dialogue_text.strip():
             logger.error(f"Анализ невозможен: нет ни сообщений, ни результатов опроса для сессии {session_id}.")
             return {"error": "Нет данных для анализа."}
-            
-        print('====================\n', full_dialogue_text)
 
-        # 3. Выполняем анализ с помощью NLP-сервиса
         try:
             logger.info(f"Отправка текста на анализ сентимента...")
             sentiment_result = await nlp_service.analyze_sentiment(full_dialogue_text)
@@ -76,21 +68,18 @@ async def analyze_user_session(telegram_id: int) -> Dict[str, Any]:
         except Exception as e:
             logger.exception(f"Ошибка во время NLP-анализа для сессии {session_id}: {e}")
             return {"error": "Ошибка сервиса анализа."}
-        
-        # 4. Собираем чистый словарь с данными для сохранения в БД
+
         analysis_data_to_save = {
             "sentiment": sentiment_result.get("sentiment"),
             "is_burnout_risk_detected": sentiment_result.get("is_burnout_risk_detected"),
             "comment": topics_result.get("comment")
         }
 
-        # 5. Сохраняем результат в БД (в той же сессии)
         logger.info(f"Сохранение результата анализа для сессии {session_id}...")
         saved_analysis = await repo.save_analysis(session_id=session_id, analysis_data=analysis_data_to_save)
-        
+
         logger.info(f"Анализ для сессии {session_id} успешно сохранен.")
-        
-        # Возвращаем данные из только что сохраненного объекта
+
         return {
             "session_id": saved_analysis.session_id,
             "sentiment": saved_analysis.sentiment,

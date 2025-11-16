@@ -1,5 +1,5 @@
 import logging
-from typing import Dict, Any
+
 from aiogram import Bot
 
 from src.db.repo import SQLiteRepository
@@ -9,15 +9,11 @@ from src.ai_services.prompts.questions import QUESTIONS
 
 logger = logging.getLogger(__name__)
 
+
 async def send_session_feedback(telegram_id: int, bot: Bot) -> bool:
-    """
-    Собирает данные последней сессии, генерирует на их основе персональную
-    обратную связь и отправляет её пользователю.
-    """
     logger.info(f"Подготовка и отправка обратной связи для telegram_id: {telegram_id}")
     full_session_text = ""
 
-    # ===== ШАГ 1: Собираем весь текст в одну переменную (ваш код) =====
     async with AsyncSessionLocal() as session:
         repo = SQLiteRepository(session)
         employee = await repo.get_employee(telegram_id=telegram_id)
@@ -45,12 +41,11 @@ async def send_session_feedback(telegram_id: int, bot: Bot) -> bool:
                     survey_details.append(f"- {q_text}: {answer}")
             if len(survey_details) > 1:
                 full_session_text += "\n".join(survey_details)
-    
+
     if not full_session_text.strip():
         logger.error(f"Невозможно сгенерировать фидбэк: нет данных для пользователя {telegram_id}.")
         return False
-    
-    # ===== ШАГ 2: Генерируем фидбэк напрямую из текста =====
+
     try:
         logger.info(f"Отправка текста сессии для генерации прямого фидбэка...")
         feedback_message = await nlp_service.generate_feedback_from_text(full_session_text)
@@ -59,7 +54,6 @@ async def send_session_feedback(telegram_id: int, bot: Bot) -> bool:
             logger.warning(f"Сервис не сгенерировал текст фидбэка для {telegram_id}.")
             return False
 
-        # ===== ШАГ 3: Отправляем сгенерированное сообщение пользователю =====
         await bot.send_message(
             chat_id=telegram_id,
             text=feedback_message

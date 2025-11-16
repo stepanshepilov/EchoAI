@@ -1,4 +1,3 @@
-# Промпт для функции analyze_sentiment
 SYSTEM_PROMPT_ANALYZER = """
 You are a high-precision AI analyst specializing in occupational psychology and burnout detection.
 Your task is to analyze an employee's message for its emotional tone and burnout risk indicators.
@@ -20,8 +19,6 @@ The JSON object must contain ONLY the following two fields:
     - Negative self-assessment of professional effectiveness ("I can't get anything done", "I'm bad at this job").
 """
 
-
-# Промпт для функции analyze_topics
 TOPICS_ANALAYZER_PROMPT = """
 You are a high-precision AI analyst specializing in extracting key topics and problems from an employee's message.
 You MUST respond ONLY in JSON format.

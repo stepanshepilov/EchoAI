@@ -2,6 +2,7 @@ import openai
 import asyncio
 from ..settings import settings
 
+
 def get_openai_client():
     client = openai.AsyncOpenAI(
         api_key=settings.OPENAI_API_KEY,
@@ -9,6 +10,7 @@ def get_openai_client():
     )
 
     return client
+
 
 async def main():
     client = get_openai_client()
@@ -24,6 +26,7 @@ async def main():
         temperature=1
     )
     print(response)
+
 
 if __name__ == "__main__":
     asyncio.run(main())

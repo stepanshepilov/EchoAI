@@ -1,7 +1,5 @@
 import pandas as pd
-from datetime import datetime, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
-from src.db.repo import SQLiteRepository
 
 
 class FeatureService:

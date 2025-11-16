@@ -2,11 +2,6 @@ import asyncio
 import logging
 import whisper
 
-# УБРАТЬ ЭТОТ ЕБАННЫЙ КОСТЫЛЬ 
-import os
-# os.environ["PATH"] += os.pathsep + r"C:\Users\kates\Downloads\ffmpeg-8.0-essentials_build\bin"
-
-
 logger = logging.getLogger(__name__)
 
 MODEL_NAME = "base"
@@ -20,10 +15,11 @@ except Exception as e:
     logger.critical(f"Не удалось загрузить модель Whisper: {e}", exc_info=True)
     _whisper_model = None
 
+
 async def transcribe_audio(file_path: str) -> dict:
     if not _whisper_model:
         return {"error": "Модель Whisper не загружена."}
-        
+
     logger.info(f"Начинаю транскрибацию файла: {file_path}")
     try:
         loop = asyncio.get_running_loop()
